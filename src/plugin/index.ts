@@ -59,7 +59,13 @@ async function loadSettings() {
   const settings = await figma.clientStorage.getAsync('settings') as PluginSettings | undefined
   sendToUI({
     type: 'settings-loaded',
-    settings: settings || { apiKey: '', contextInstructions: '', viewport: 'mobile' }
+    settings: settings || {
+      claudeApiKey: '',
+      openaiApiKey: '',
+      selectedProvider: 'claude',
+      contextInstructions: '',
+      viewport: 'mobile'
+    }
   })
 }
 

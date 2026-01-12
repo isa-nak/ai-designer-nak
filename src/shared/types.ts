@@ -1,3 +1,18 @@
+// AI Provider types
+export type AIProvider = 'claude' | 'openai'
+
+export interface AIProviderConfig {
+  id: AIProvider
+  name: string
+  model: string
+  hasKey: boolean
+}
+
+export const AI_PROVIDERS: Record<AIProvider, Omit<AIProviderConfig, 'hasKey'>> = {
+  claude: { id: 'claude', name: 'Claude', model: 'Sonnet' },
+  openai: { id: 'openai', name: 'OpenAI', model: 'GPT-4o' },
+}
+
 // Viewport presets
 export type ViewportPreset = 'mobile' | 'tablet' | 'desktop' | 'custom'
 
@@ -36,7 +51,9 @@ export type MessageToUI =
   | { type: 'error'; message: string }
 
 export interface PluginSettings {
-  apiKey: string
+  claudeApiKey: string
+  openaiApiKey: string
+  selectedProvider: AIProvider
   contextInstructions: string
   viewport: ViewportPreset
 }

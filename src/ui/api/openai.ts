@@ -1,7 +1,7 @@
 import type { DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
 import { buildSystemPrompt } from './prompts'
 
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages'
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 
 interface GenerationOptions {
   prompt: string
@@ -14,13 +14,13 @@ interface GenerationOptions {
   onProgress?: (text: string) => void
 }
 
-interface ClaudeMessage {
-  role: 'user' | 'assistant'
-  content: string | Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }>
+interface OpenAIMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
 }
 
-// Stream design generation from Claude
-export async function streamClaudeGeneration(
+// Stream design generation from OpenAI
+export async function streamOpenAIGeneration(
   options: GenerationOptions
 ): Promise<FrameNode> {
   const { prompt, apiKey, viewport, designSystem, contextInstructions, imageData, existingDesign, onProgress } = options
@@ -28,21 +28,14 @@ export async function streamClaudeGeneration(
   const systemPrompt = buildSystemPrompt(viewport, designSystem, contextInstructions)
 
   // Build user message
-  let userContent: ClaudeMessage['content']
+  let userContent: OpenAIMessage['content']
 
   if (imageData) {
     // Include image reference
-    const base64Data = imageData.split(',')[1] || imageData
-    const mediaType = imageData.includes('png') ? 'image/png' : 'image/jpeg'
-
     userContent = [
       {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: mediaType,
-          data: base64Data,
-        },
+        type: 'image_url',
+        image_url: { url: imageData },
       },
       {
         type: 'text',
@@ -57,22 +50,20 @@ export async function streamClaudeGeneration(
     userContent = `Create a ${viewport.name.toLowerCase()} screen design for: ${prompt}\n\nGenerate the design JSON:`
   }
 
-  const messages: ClaudeMessage[] = [
+  const messages: OpenAIMessage[] = [
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: userContent },
   ]
 
-  const response = await fetch(CLAUDE_API_URL, {
+  const response = await fetch(OPENAI_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'gpt-4o',
       max_tokens: 8192,
-      system: systemPrompt,
       messages,
       stream: true,
     }),
@@ -80,7 +71,7 @@ export async function streamClaudeGeneration(
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`)
+    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`)
   }
 
   if (!response.body) {
@@ -110,18 +101,15 @@ export async function streamClaudeGeneration(
 
         try {
           const event = JSON.parse(data)
+          const delta = event.choices?.[0]?.delta?.content
 
-          if (event.type === 'content_block_delta' && event.delta?.text) {
-            fullText += event.delta.text
+          if (delta) {
+            fullText += delta
             onProgress?.(fullText)
           }
 
-          if (event.type === 'message_stop') {
+          if (event.choices?.[0]?.finish_reason === 'stop') {
             break
-          }
-
-          if (event.type === 'error') {
-            throw new Error(event.error?.message || 'Stream error')
           }
         } catch (e) {
           // Ignore JSON parse errors for non-JSON lines
@@ -166,6 +154,6 @@ function parseDesignJson(text: string): FrameNode {
   } catch (e) {
     console.error('Failed to parse design JSON:', e)
     console.error('Raw text:', text)
-    throw new Error(`Failed to parse Claude's response as JSON. The AI may have returned an invalid format.`)
+    throw new Error(`Failed to parse OpenAI's response as JSON. The AI may have returned an invalid format.`)
   }
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import type { MessageToUI, PluginSettings, SelectionInfo, DesignSystemContext, FrameNode, ViewportPreset } from '../shared/types'
-import { VIEWPORT_PRESETS } from '../shared/types'
-import { streamDesignGeneration } from './api/claude'
+import type { MessageToUI, PluginSettings, SelectionInfo, DesignSystemContext, FrameNode, ViewportPreset, AIProvider } from '../shared/types'
+import { VIEWPORT_PRESETS, AI_PROVIDERS } from '../shared/types'
+import { generateDesign } from './api'
 
 interface ChatMessage {
   id: string
@@ -11,12 +11,16 @@ interface ChatMessage {
   isStreaming?: boolean
 }
 
+const DEFAULT_SETTINGS: PluginSettings = {
+  claudeApiKey: '',
+  openaiApiKey: '',
+  selectedProvider: 'claude',
+  contextInstructions: '',
+  viewport: 'mobile'
+}
+
 export default function App() {
-  const [settings, setSettings] = useState<PluginSettings>({
-    apiKey: '',
-    contextInstructions: '',
-    viewport: 'mobile'
-  })
+  const [settings, setSettings] = useState<PluginSettings>(DEFAULT_SETTINGS)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -29,6 +33,15 @@ export default function App() {
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Get current API key based on selected provider
+  const currentApiKey = settings.selectedProvider === 'claude'
+    ? settings.claudeApiKey
+    : settings.openaiApiKey
+
+  // Check which providers have API keys
+  const hasClaudeKey = settings.claudeApiKey.trim().length > 0
+  const hasOpenaiKey = settings.openaiApiKey.trim().length > 0
 
   useEffect(() => {
     // Request initial data
@@ -43,12 +56,14 @@ export default function App() {
 
       switch (msg.type) {
         case 'settings-loaded':
-          setSettings(msg.settings)
-          if (!msg.settings.apiKey) setSettingsOpen(true)
+          // Merge with defaults to handle missing fields from old settings
+          setSettings({ ...DEFAULT_SETTINGS, ...msg.settings })
+          if (!msg.settings.claudeApiKey && !msg.settings.openaiApiKey) {
+            setSettingsOpen(true)
+          }
           break
         case 'selection-changed':
           setSelection(msg.selection)
-          // Request selection data when selection changes
           if (msg.selection) {
             parent.postMessage({ pluginMessage: { type: 'request-selection-data' } }, '*')
           } else {
@@ -62,7 +77,6 @@ export default function App() {
           setDesignSystem(msg.designSystem)
           break
         case 'generation-started':
-          // Already handled in UI
           break
         case 'generation-complete':
           setIsGenerating(false)
@@ -120,9 +134,15 @@ export default function App() {
     setSettingsOpen(false)
   }
 
+  const handleProviderChange = (provider: AIProvider) => {
+    const newSettings = { ...settings, selectedProvider: provider }
+    setSettings(newSettings)
+    parent.postMessage({ pluginMessage: { type: 'save-settings', settings: newSettings } }, '*')
+  }
+
   const handleSubmit = async () => {
     if (!input.trim() && !imageData) return
-    if (!settings.apiKey) {
+    if (!currentApiKey) {
       setSettingsOpen(true)
       return
     }
@@ -135,11 +155,11 @@ export default function App() {
     }
     setMessages(prev => [...prev, userMessage])
 
-    // Add streaming assistant message
+    const providerName = AI_PROVIDERS[settings.selectedProvider].name
     const assistantMessage: ChatMessage = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: 'Generating design...',
+      content: `Generating with ${providerName}...`,
       isStreaming: true
     }
     setMessages(prev => [...prev, assistantMessage])
@@ -152,9 +172,10 @@ export default function App() {
     const viewport = VIEWPORT_PRESETS[settings.viewport]
 
     try {
-      const design = await streamDesignGeneration({
+      const design = await generateDesign({
         prompt: input,
-        apiKey: settings.apiKey,
+        provider: settings.selectedProvider,
+        apiKey: currentApiKey,
         viewport,
         designSystem,
         contextInstructions: settings.contextInstructions,
@@ -166,7 +187,6 @@ export default function App() {
             const updated = [...prev]
             const lastIdx = updated.length - 1
             if (lastIdx >= 0 && updated[lastIdx].isStreaming) {
-              // Show truncated preview of JSON being generated
               const preview = text.length > 200
                 ? text.slice(0, 100) + '...\n\n[Generating design...]'
                 : text
@@ -180,7 +200,6 @@ export default function App() {
         }
       })
 
-      // Send to plugin for rendering
       parent.postMessage({
         pluginMessage: {
           type: 'render-design',
@@ -219,6 +238,7 @@ export default function App() {
   }
 
   const viewportOptions: ViewportPreset[] = ['mobile', 'tablet', 'desktop']
+  const providerOptions: AIProvider[] = ['claude', 'openai']
 
   return (
     <div className="container">
@@ -231,12 +251,22 @@ export default function App() {
       {settingsOpen && (
         <div className="settings-panel">
           <label>
-            API Key
+            Claude API Key
             <input
               type="password"
-              value={settings.apiKey}
-              onChange={e => setSettings({ ...settings, apiKey: e.target.value })}
+              value={settings.claudeApiKey}
+              onChange={e => setSettings({ ...settings, claudeApiKey: e.target.value })}
               placeholder="sk-ant-..."
+            />
+          </label>
+
+          <label>
+            OpenAI API Key
+            <input
+              type="password"
+              value={settings.openaiApiKey}
+              onChange={e => setSettings({ ...settings, openaiApiKey: e.target.value })}
+              placeholder="sk-..."
             />
           </label>
 
@@ -271,6 +301,28 @@ export default function App() {
         </div>
       )}
 
+      {/* Model Selector */}
+      <div className="model-selector">
+        {providerOptions.map(p => {
+          const provider = AI_PROVIDERS[p]
+          const hasKey = p === 'claude' ? hasClaudeKey : hasOpenaiKey
+          const isSelected = settings.selectedProvider === p
+
+          return (
+            <button
+              key={p}
+              className={`model-option ${isSelected ? 'active' : ''} ${!hasKey ? 'disabled' : ''}`}
+              onClick={() => hasKey && handleProviderChange(p)}
+              disabled={!hasKey}
+              title={!hasKey ? `Add ${provider.name} API key in settings` : `Use ${provider.name}`}
+            >
+              <span className="model-name">{provider.name}</span>
+              <span className="model-variant">{provider.model}</span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Design System Info */}
       {designSystem && (
         <div className="design-system-info">
@@ -285,7 +337,7 @@ export default function App() {
         {messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon">🎨</div>
-            <h3>Claude Design</h3>
+            <h3>AI Designer</h3>
             <p>Describe a screen to generate, or select a frame and describe changes.</p>
             <div className="example-prompts">
               <button onClick={() => setInput('Create a modern login screen with email and password fields')}>
