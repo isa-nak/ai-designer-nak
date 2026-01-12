@@ -1,0 +1,12 @@
+{
+  "name": "Claude Design",
+  "id": "claude-design-plugin",
+  "api": "1.0.0",
+  "main": "dist/plugin.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["https://api.anthropic.com"]
+  },
+  "permissions": ["currentuser"]
+}
