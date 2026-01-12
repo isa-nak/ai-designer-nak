@@ -46,14 +46,33 @@ The JSON must follow this schema for a frame/screen:
 
 ## Design Guidelines
 - Target viewport: ${viewport.width}x${viewport.height}px (${viewport.name})
-- Use auto-layout (layoutMode: "VERTICAL" or "HORIZONTAL") for responsive designs
+- ROOT FRAME MUST have layoutMode: "VERTICAL" with proper padding
+- Use auto-layout (layoutMode: "VERTICAL" or "HORIZONTAL") for ALL containers
 - Use layoutAlign: "STRETCH" for elements that should fill available width
 - Use layoutGrow: 1 for elements that should expand to fill space
 - Colors are in 0-1 range (e.g., white is { "r": 1, "g": 1, "b": 1 })
 - Use consistent spacing (8px grid recommended)
 - Create semantic, descriptive names for layers
 - Use corner radius for modern rounded elements
-- Add subtle shadows for depth on cards/buttons`
+- Add subtle shadows for depth on cards/buttons
+- ONLY use fontWeight: 400 (Regular) or 700 (Bold) - other weights may not be available
+
+## Input Fields - IMPORTANT
+For text input fields, ALWAYS use a FRAME with auto-layout, NOT a RECTANGLE:
+{
+  "type": "FRAME",
+  "name": "Input Field",
+  "layoutMode": "HORIZONTAL",
+  "counterAxisAlignItems": "CENTER",
+  "padding": { "top": 12, "right": 16, "bottom": 12, "left": 16 },
+  "cornerRadius": 8,
+  "fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1 } }],
+  "strokes": [{ "type": "SOLID", "color": { "r": 0.85, "g": 0.85, "b": 0.85 } }],
+  "strokeWeight": 1,
+  "children": [
+    { "type": "TEXT", "name": "Placeholder", "characters": "Enter text...", "fontSize": 14, "fontWeight": 400, "fills": [...], "layoutGrow": 1 }
+  ]
+}`
 
   // Add design system context if available
   if (designSystem) {

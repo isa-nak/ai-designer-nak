@@ -17,8 +17,20 @@ export async function renderDesign(
   frame.x = figma.viewport.center.x - viewport.width / 2
   frame.y = figma.viewport.center.y - viewport.height / 2
 
+  // Ensure root frame has auto layout if not specified
+  if (!design.layoutMode || design.layoutMode === 'NONE') {
+    design.layoutMode = 'VERTICAL'
+    design.primaryAxisAlignItems = design.primaryAxisAlignItems || 'MIN'
+    design.counterAxisAlignItems = design.counterAxisAlignItems || 'CENTER'
+  }
+
   // Apply frame properties
   await applyFrameProperties(frame, design, designSystem)
+
+  // For root frame, set fixed size to viewport dimensions
+  frame.primaryAxisSizingMode = 'FIXED'
+  frame.counterAxisSizingMode = 'FIXED'
+  frame.resize(viewport.width, viewport.height)
 
   // Render children
   if (design.children) {
@@ -191,8 +203,8 @@ async function renderText(
   const fontWeight = element.fontWeight || 400
   const fontStyle = getFontStyle(fontWeight)
 
-  await loadFont(fontFamily, fontStyle)
-  text.fontName = { family: fontFamily, style: fontStyle }
+  const loadedFont = await loadFont(fontFamily, fontStyle)
+  text.fontName = loadedFont
 
   // Set text content
   text.characters = element.characters || ''
@@ -543,23 +555,38 @@ function getFontStyle(weight: number): string {
   return styles[weight] || 'Regular'
 }
 
-// Load a font
-async function loadFont(family: string, style: string): Promise<void> {
+// Load a font and return the actually loaded font
+async function loadFont(family: string, style: string): Promise<FontName> {
   const fontKey = `${family}-${style}`
-  if (loadedFonts.has(fontKey)) return
+
+  // Check if already loaded
+  if (loadedFonts.has(fontKey)) {
+    return { family, style }
+  }
 
   try {
     await figma.loadFontAsync({ family, style })
     loadedFonts.add(fontKey)
+    return { family, style }
   } catch {
-    // Fallback to Inter if font not found
+    // Try Inter with same style
     if (family !== 'Inter') {
       try {
-        await figma.loadFontAsync({ family: 'Inter', style: 'Regular' })
-        loadedFonts.add('Inter-Regular')
+        await figma.loadFontAsync({ family: 'Inter', style })
+        loadedFonts.add(`Inter-${style}`)
+        return { family: 'Inter', style }
       } catch {
-        // Inter should always be available
+        // Fallback to Inter Regular
       }
     }
+
+    // Final fallback: Inter Regular
+    try {
+      await figma.loadFontAsync({ family: 'Inter', style: 'Regular' })
+      loadedFonts.add('Inter-Regular')
+    } catch {
+      // Inter Regular should always be available
+    }
+    return { family: 'Inter', style: 'Regular' }
   }
 }
