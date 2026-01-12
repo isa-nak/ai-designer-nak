@@ -1,4 +1,5 @@
 import type { MessageToPlugin, MessageToUI, PluginSettings, DesignSystemContext, SelectionInfo, ViewportSize } from '../shared/types'
+import { DEFAULT_COLOR_PALETTE } from '../shared/types'
 import { renderDesign } from './renderer'
 import { serializeSelection } from './serializer'
 
@@ -64,7 +65,8 @@ async function loadSettings() {
       openaiApiKey: '',
       selectedProvider: 'claude',
       contextInstructions: '',
-      viewport: 'mobile'
+      viewport: 'mobile',
+      customColors: DEFAULT_COLOR_PALETTE
     }
   })
 }

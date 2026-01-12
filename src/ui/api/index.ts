@@ -1,4 +1,4 @@
-import type { AIProvider, DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
+import type { AIProvider, CustomColorPalette, DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
 import { streamClaudeGeneration } from './claude'
 import { streamOpenAIGeneration } from './openai'
 
@@ -9,6 +9,7 @@ export interface GenerationOptions {
   viewport: ViewportSize
   designSystem: DesignSystemContext | null
   contextInstructions: string
+  customColors?: CustomColorPalette
   imageData?: string
   existingDesign?: FrameNode
   onProgress?: (text: string) => void

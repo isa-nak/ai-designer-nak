@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import type { MessageToUI, PluginSettings, SelectionInfo, DesignSystemContext, FrameNode, ViewportPreset, AIProvider } from '../shared/types'
-import { VIEWPORT_PRESETS, AI_PROVIDERS } from '../shared/types'
+import type { MessageToUI, PluginSettings, SelectionInfo, DesignSystemContext, FrameNode, ViewportPreset, AIProvider, CustomColorPalette } from '../shared/types'
+import { VIEWPORT_PRESETS, AI_PROVIDERS, DEFAULT_COLOR_PALETTE } from '../shared/types'
 import { generateDesign } from './api'
 
 interface ChatMessage {
@@ -11,17 +11,34 @@ interface ChatMessage {
   isStreaming?: boolean
 }
 
+type SettingsTab = 'general' | 'colors'
+
+const COLOR_LABELS: Record<keyof CustomColorPalette, string> = {
+  primary: 'Primary',
+  primaryDark: 'Primary Dark',
+  background: 'Background',
+  backgroundCard: 'Card Background',
+  textPrimary: 'Text Primary',
+  textSecondary: 'Text Secondary',
+  border: 'Border',
+  success: 'Success',
+  error: 'Error',
+  warning: 'Warning',
+}
+
 const DEFAULT_SETTINGS: PluginSettings = {
   claudeApiKey: '',
   openaiApiKey: '',
   selectedProvider: 'claude',
   contextInstructions: '',
-  viewport: 'mobile'
+  viewport: 'mobile',
+  customColors: DEFAULT_COLOR_PALETTE
 }
 
 export default function App() {
   const [settings, setSettings] = useState<PluginSettings>(DEFAULT_SETTINGS)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [imageData, setImageData] = useState<string | null>(null)
@@ -179,6 +196,7 @@ export default function App() {
         viewport,
         designSystem,
         contextInstructions: settings.contextInstructions,
+        customColors: settings.customColors,
         imageData: imageData || undefined,
         existingDesign: selection ? selectionData || undefined : undefined,
         onProgress: (text) => {
@@ -250,53 +268,127 @@ export default function App() {
 
       {settingsOpen && (
         <div className="settings-panel">
-          <label>
-            Claude API Key
-            <input
-              type="password"
-              value={settings.claudeApiKey}
-              onChange={e => setSettings({ ...settings, claudeApiKey: e.target.value })}
-              placeholder="sk-ant-..."
-            />
-          </label>
+          {/* Settings Tabs */}
+          <div className="settings-tabs">
+            <button
+              className={`settings-tab ${settingsTab === 'general' ? 'active' : ''}`}
+              onClick={() => setSettingsTab('general')}
+            >
+              General
+            </button>
+            <button
+              className={`settings-tab ${settingsTab === 'colors' ? 'active' : ''}`}
+              onClick={() => setSettingsTab('colors')}
+            >
+              Colors
+            </button>
+          </div>
 
-          <label>
-            OpenAI API Key
-            <input
-              type="password"
-              value={settings.openaiApiKey}
-              onChange={e => setSettings({ ...settings, openaiApiKey: e.target.value })}
-              placeholder="sk-..."
-            />
-          </label>
+          {/* General Tab */}
+          {settingsTab === 'general' && (
+            <>
+              <label>
+                Claude API Key
+                <input
+                  type="password"
+                  value={settings.claudeApiKey}
+                  onChange={e => setSettings({ ...settings, claudeApiKey: e.target.value })}
+                  placeholder="sk-ant-..."
+                />
+              </label>
 
-          <label>
-            Viewport
-            <div className="viewport-selector">
-              {viewportOptions.map(v => (
-                <button
-                  key={v}
-                  className={`viewport-option ${settings.viewport === v ? 'active' : ''}`}
-                  onClick={() => setSettings({ ...settings, viewport: v })}
-                >
-                  {VIEWPORT_PRESETS[v].name}
-                  <span className="viewport-size">
-                    {VIEWPORT_PRESETS[v].width}x{VIEWPORT_PRESETS[v].height}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </label>
+              <label>
+                OpenAI API Key
+                <input
+                  type="password"
+                  value={settings.openaiApiKey}
+                  onChange={e => setSettings({ ...settings, openaiApiKey: e.target.value })}
+                  placeholder="sk-..."
+                />
+              </label>
 
-          <label>
-            Context Instructions
-            <textarea
-              value={settings.contextInstructions}
-              onChange={e => setSettings({ ...settings, contextInstructions: e.target.value })}
-              placeholder="Design guidelines: Always use 8px grid. Use Inter font. Mobile-first..."
-              rows={3}
-            />
-          </label>
+              <label>
+                Viewport
+                <div className="viewport-selector">
+                  {viewportOptions.map(v => (
+                    <button
+                      key={v}
+                      className={`viewport-option ${settings.viewport === v ? 'active' : ''}`}
+                      onClick={() => setSettings({ ...settings, viewport: v })}
+                    >
+                      {VIEWPORT_PRESETS[v].name}
+                      <span className="viewport-size">
+                        {VIEWPORT_PRESETS[v].width}x{VIEWPORT_PRESETS[v].height}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </label>
+
+              <label>
+                Context Instructions
+                <textarea
+                  value={settings.contextInstructions}
+                  onChange={e => setSettings({ ...settings, contextInstructions: e.target.value })}
+                  placeholder="Design guidelines: Always use 8px grid. Use Inter font. Mobile-first..."
+                  rows={3}
+                />
+              </label>
+            </>
+          )}
+
+          {/* Colors Tab */}
+          {settingsTab === 'colors' && (
+            <>
+              <p className="colors-note">
+                Default colors used when no design system is available.
+                {designSystem && designSystem.colorVariables.length > 0 && (
+                  <span className="colors-hint"> (Design system detected - these will be overridden)</span>
+                )}
+              </p>
+              <div className="color-grid">
+                {(Object.keys(COLOR_LABELS) as Array<keyof CustomColorPalette>).map(colorKey => (
+                  <div key={colorKey} className="color-item">
+                    <label>{COLOR_LABELS[colorKey]}</label>
+                    <div className="color-input-wrapper">
+                      <input
+                        type="color"
+                        value={settings.customColors?.[colorKey] || DEFAULT_COLOR_PALETTE[colorKey]}
+                        onChange={e => setSettings({
+                          ...settings,
+                          customColors: {
+                            ...DEFAULT_COLOR_PALETTE,
+                            ...settings.customColors,
+                            [colorKey]: e.target.value
+                          }
+                        })}
+                      />
+                      <input
+                        type="text"
+                        value={settings.customColors?.[colorKey] || DEFAULT_COLOR_PALETTE[colorKey]}
+                        onChange={e => setSettings({
+                          ...settings,
+                          customColors: {
+                            ...DEFAULT_COLOR_PALETTE,
+                            ...settings.customColors,
+                            [colorKey]: e.target.value
+                          }
+                        })}
+                        placeholder="#000000"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                className="reset-colors"
+                onClick={() => setSettings({ ...settings, customColors: DEFAULT_COLOR_PALETTE })}
+              >
+                Reset to Defaults
+              </button>
+            </>
+          )}
+
           <button onClick={handleSaveSettings}>Save Settings</button>
         </div>
       )}

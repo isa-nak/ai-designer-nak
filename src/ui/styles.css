@@ -83,6 +83,116 @@ body {
   background: #0d8de5;
 }
 
+/* Settings Tabs */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.settings-tab {
+  flex: 1;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.settings-tab:hover {
+  border-color: #18a0fb;
+  background: #f0f7ff;
+}
+
+.settings-tab.active {
+  background: #18a0fb;
+  border-color: #18a0fb;
+  color: white;
+}
+
+/* Colors Tab */
+.colors-note {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.colors-hint {
+  color: #18a0fb;
+  font-style: italic;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.color-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.color-item label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #555;
+}
+
+.color-input-wrapper {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.color-input-wrapper input[type="color"] {
+  width: 32px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.color-input-wrapper input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-input-wrapper input[type="color"]::-webkit-color-swatch {
+  border-radius: 2px;
+  border: none;
+}
+
+.color-input-wrapper input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, monospace;
+  text-transform: uppercase;
+}
+
+.reset-colors {
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reset-colors:hover {
+  background: #e8e8e8;
+  border-color: #ccc;
+}
+
 /* Viewport Selector */
 .viewport-selector {
   display: flex;

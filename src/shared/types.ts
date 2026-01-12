@@ -50,12 +50,40 @@ export type MessageToUI =
   | { type: 'selection-data'; data: FrameNode | null }
   | { type: 'error'; message: string }
 
+// Custom color palette for when no design system is available
+export interface CustomColorPalette {
+  primary: string
+  primaryDark: string
+  background: string
+  backgroundCard: string
+  textPrimary: string
+  textSecondary: string
+  border: string
+  success: string
+  error: string
+  warning: string
+}
+
+export const DEFAULT_COLOR_PALETTE: CustomColorPalette = {
+  primary: '#18A0FB',
+  primaryDark: '#0D8CE6',
+  background: '#FAFAFA',
+  backgroundCard: '#FFFFFF',
+  textPrimary: '#212121',
+  textSecondary: '#757575',
+  border: '#E0E0E0',
+  success: '#2EB86B',
+  error: '#E84545',
+  warning: '#FFC107',
+}
+
 export interface PluginSettings {
   claudeApiKey: string
   openaiApiKey: string
   selectedProvider: AIProvider
   contextInstructions: string
   viewport: ViewportPreset
+  customColors: CustomColorPalette
 }
 
 export interface SelectionInfo {

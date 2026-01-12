@@ -1,10 +1,31 @@
-import type { DesignSystemContext, ViewportSize } from '../../shared/types'
+import type { CustomColorPalette, DesignSystemContext, ViewportSize } from '../../shared/types'
+import { DEFAULT_COLOR_PALETTE } from '../../shared/types'
+
+// Convert hex color to RGB (0-1 range)
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  if (result) {
+    return {
+      r: Math.round((parseInt(result[1], 16) / 255) * 100) / 100,
+      g: Math.round((parseInt(result[2], 16) / 255) * 100) / 100,
+      b: Math.round((parseInt(result[3], 16) / 255) * 100) / 100,
+    }
+  }
+  return { r: 0, g: 0, b: 0 }
+}
+
+// Format color for prompt
+function formatColor(hex: string): string {
+  const rgb = hexToRgb(hex)
+  return `{ "r": ${rgb.r}, "g": ${rgb.g}, "b": ${rgb.b} } (${hex})`
+}
 
 // Build the system prompt that instructs the AI how to generate Figma-compatible JSON
 export function buildSystemPrompt(
   viewport: ViewportSize,
   designSystem: DesignSystemContext | null,
-  contextInstructions: string
+  contextInstructions: string,
+  customColors?: CustomColorPalette
 ): string {
   let prompt = `You are a UI/UX design assistant that generates Figma-compatible design specifications in JSON format.
 
@@ -118,33 +139,31 @@ For text input fields, ALWAYS use a FRAME with auto-layout, NOT a RECTANGLE:
       })
     }
   } else {
-    // No design system - provide default color palette
-    prompt += `\n\n## Default Color Palette (NO design system available - USE THESE COLORS)
-Use this modern color palette for your designs:
+    // No design system - use custom colors or defaults
+    const colors = customColors || DEFAULT_COLOR_PALETTE
+
+    prompt += `\n\n## Color Palette (USE THESE COLORS)
+Use this color palette for your designs:
 
 ### Primary Colors
-- Primary: { "r": 0.09, "g": 0.63, "b": 0.98 } (#18A0FB - Figma blue)
-- Primary Dark: { "r": 0.05, "g": 0.55, "b": 0.9 } (#0D8CE6)
+- Primary: ${formatColor(colors.primary)}
+- Primary Dark: ${formatColor(colors.primaryDark)}
 
 ### Backgrounds
-- Background Light: { "r": 0.98, "g": 0.98, "b": 0.98 } (#FAFAFA)
-- Background Card: { "r": 1, "g": 1, "b": 1 } (#FFFFFF)
-- Background Dark: { "r": 0.1, "g": 0.1, "b": 0.12 } (#1A1A1F)
+- Background: ${formatColor(colors.background)}
+- Card Background: ${formatColor(colors.backgroundCard)}
 
 ### Text Colors
-- Text Primary: { "r": 0.13, "g": 0.13, "b": 0.13 } (#212121)
-- Text Secondary: { "r": 0.46, "g": 0.46, "b": 0.46 } (#757575)
-- Text Muted: { "r": 0.62, "g": 0.62, "b": 0.62 } (#9E9E9E)
-- Text On Primary: { "r": 1, "g": 1, "b": 1 } (#FFFFFF)
+- Text Primary: ${formatColor(colors.textPrimary)}
+- Text Secondary: ${formatColor(colors.textSecondary)}
 
 ### UI Colors
-- Border: { "r": 0.88, "g": 0.88, "b": 0.88 } (#E0E0E0)
-- Divider: { "r": 0.93, "g": 0.93, "b": 0.93 } (#EEEEEE)
-- Success: { "r": 0.18, "g": 0.72, "b": 0.42 } (#2EB86B)
-- Error: { "r": 0.91, "g": 0.27, "b": 0.27 } (#E84545)
-- Warning: { "r": 1, "g": 0.76, "b": 0.03 } (#FFC107)
+- Border: ${formatColor(colors.border)}
+- Success: ${formatColor(colors.success)}
+- Error: ${formatColor(colors.error)}
+- Warning: ${formatColor(colors.warning)}
 
-IMPORTANT: Do NOT use plain white (#FFFFFF / r:1,g:1,b:1) for backgrounds - use Background Light (#FAFAFA) instead so elements are visible.`
+IMPORTANT: Use Background (${colors.background}) for page backgrounds, not pure white, so elements are visible.`
   }
 
   // Add user's custom context instructions

@@ -1,4 +1,4 @@
-import type { DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
+import type { CustomColorPalette, DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
 import { buildSystemPrompt } from './prompts'
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages'
@@ -9,6 +9,7 @@ interface GenerationOptions {
   viewport: ViewportSize
   designSystem: DesignSystemContext | null
   contextInstructions: string
+  customColors?: CustomColorPalette
   imageData?: string
   existingDesign?: FrameNode
   onProgress?: (text: string) => void
@@ -23,9 +24,9 @@ interface ClaudeMessage {
 export async function streamClaudeGeneration(
   options: GenerationOptions
 ): Promise<FrameNode> {
-  const { prompt, apiKey, viewport, designSystem, contextInstructions, imageData, existingDesign, onProgress } = options
+  const { prompt, apiKey, viewport, designSystem, contextInstructions, customColors, imageData, existingDesign, onProgress } = options
 
-  const systemPrompt = buildSystemPrompt(viewport, designSystem, contextInstructions)
+  const systemPrompt = buildSystemPrompt(viewport, designSystem, contextInstructions, customColors)
 
   // Build user message
   let userContent: ClaudeMessage['content']
