@@ -75,43 +75,76 @@ For text input fields, ALWAYS use a FRAME with auto-layout, NOT a RECTANGLE:
 }`
 
   // Add design system context if available
-  if (designSystem) {
+  const hasDesignSystem = designSystem && (
+    designSystem.colorVariables.length > 0 ||
+    designSystem.spacingVariables.length > 0 ||
+    designSystem.textStyles.length > 0 ||
+    designSystem.components.length > 0
+  )
+
+  if (hasDesignSystem && designSystem) {
     const hasColors = designSystem.colorVariables.length > 0
     const hasSpacing = designSystem.spacingVariables.length > 0
     const hasTextStyles = designSystem.textStyles.length > 0
     const hasComponents = designSystem.components.length > 0
 
-    if (hasColors || hasSpacing || hasTextStyles || hasComponents) {
-      prompt += `\n\n## Design System Available`
+    prompt += `\n\n## Design System Available`
 
-      if (hasColors) {
-        prompt += `\n\n### Colors (use these when appropriate):`
-        designSystem.colorVariables.slice(0, 20).forEach(color => {
-          prompt += `\n- ${color.name}: ${color.value}`
-        })
-      }
-
-      if (hasSpacing) {
-        prompt += `\n\n### Spacing Values:`
-        designSystem.spacingVariables.slice(0, 10).forEach(spacing => {
-          prompt += `\n- ${spacing.name}: ${spacing.value}px`
-        })
-      }
-
-      if (hasTextStyles) {
-        prompt += `\n\n### Text Styles:`
-        designSystem.textStyles.slice(0, 10).forEach(style => {
-          prompt += `\n- ${style.name}: ${style.fontFamily} ${style.fontWeight} ${style.fontSize}px`
-        })
-      }
-
-      if (hasComponents) {
-        prompt += `\n\n### Available Components (use type: "INSTANCE" with componentKey):`
-        designSystem.components.slice(0, 15).forEach(comp => {
-          prompt += `\n- ${comp.name}: "${comp.key}"${comp.description ? ` - ${comp.description}` : ''}`
-        })
-      }
+    if (hasColors) {
+      prompt += `\n\n### Colors (use these when appropriate):`
+      designSystem.colorVariables.slice(0, 20).forEach(color => {
+        prompt += `\n- ${color.name}: ${color.value}`
+      })
     }
+
+    if (hasSpacing) {
+      prompt += `\n\n### Spacing Values:`
+      designSystem.spacingVariables.slice(0, 10).forEach(spacing => {
+        prompt += `\n- ${spacing.name}: ${spacing.value}px`
+      })
+    }
+
+    if (hasTextStyles) {
+      prompt += `\n\n### Text Styles:`
+      designSystem.textStyles.slice(0, 10).forEach(style => {
+        prompt += `\n- ${style.name}: ${style.fontFamily} ${style.fontWeight} ${style.fontSize}px`
+      })
+    }
+
+    if (hasComponents) {
+      prompt += `\n\n### Available Components (use type: "INSTANCE" with componentKey):`
+      designSystem.components.slice(0, 15).forEach(comp => {
+        prompt += `\n- ${comp.name}: "${comp.key}"${comp.description ? ` - ${comp.description}` : ''}`
+      })
+    }
+  } else {
+    // No design system - provide default color palette
+    prompt += `\n\n## Default Color Palette (NO design system available - USE THESE COLORS)
+Use this modern color palette for your designs:
+
+### Primary Colors
+- Primary: { "r": 0.09, "g": 0.63, "b": 0.98 } (#18A0FB - Figma blue)
+- Primary Dark: { "r": 0.05, "g": 0.55, "b": 0.9 } (#0D8CE6)
+
+### Backgrounds
+- Background Light: { "r": 0.98, "g": 0.98, "b": 0.98 } (#FAFAFA)
+- Background Card: { "r": 1, "g": 1, "b": 1 } (#FFFFFF)
+- Background Dark: { "r": 0.1, "g": 0.1, "b": 0.12 } (#1A1A1F)
+
+### Text Colors
+- Text Primary: { "r": 0.13, "g": 0.13, "b": 0.13 } (#212121)
+- Text Secondary: { "r": 0.46, "g": 0.46, "b": 0.46 } (#757575)
+- Text Muted: { "r": 0.62, "g": 0.62, "b": 0.62 } (#9E9E9E)
+- Text On Primary: { "r": 1, "g": 1, "b": 1 } (#FFFFFF)
+
+### UI Colors
+- Border: { "r": 0.88, "g": 0.88, "b": 0.88 } (#E0E0E0)
+- Divider: { "r": 0.93, "g": 0.93, "b": 0.93 } (#EEEEEE)
+- Success: { "r": 0.18, "g": 0.72, "b": 0.42 } (#2EB86B)
+- Error: { "r": 0.91, "g": 0.27, "b": 0.27 } (#E84545)
+- Warning: { "r": 1, "g": 0.76, "b": 0.03 } (#FFC107)
+
+IMPORTANT: Do NOT use plain white (#FFFFFF / r:1,g:1,b:1) for backgrounds - use Background Light (#FAFAFA) instead so elements are visible.`
   }
 
   // Add user's custom context instructions
