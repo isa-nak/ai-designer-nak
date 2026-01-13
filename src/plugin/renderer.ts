@@ -121,7 +121,12 @@ async function applyFrameProperties(
       frame.primaryAxisAlignItems = props.primaryAxisAlignItems
     }
     if (props.counterAxisAlignItems) {
-      frame.counterAxisAlignItems = props.counterAxisAlignItems
+      // Validate counterAxisAlignItems - only MIN, MAX, CENTER, BASELINE are valid
+      const validCounterAxis = ['MIN', 'MAX', 'CENTER', 'BASELINE']
+      const counterValue = validCounterAxis.includes(props.counterAxisAlignItems)
+        ? props.counterAxisAlignItems
+        : 'CENTER' // Default to CENTER if invalid (e.g., STRETCH)
+      frame.counterAxisAlignItems = counterValue as 'MIN' | 'MAX' | 'CENTER' | 'BASELINE'
     }
     if (props.itemSpacing !== undefined) {
       frame.itemSpacing = props.itemSpacing

@@ -43,7 +43,7 @@ The JSON must follow this schema for a frame/screen:
       "height": number,
       "layoutMode": "NONE" | "HORIZONTAL" | "VERTICAL",
       "primaryAxisAlignItems": "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN",
-      "counterAxisAlignItems": "MIN" | "CENTER" | "MAX",
+      "counterAxisAlignItems": "MIN" | "CENTER" | "MAX" (NOT "STRETCH" - use layoutAlign for stretch),
       "padding": { "top": number, "right": number, "bottom": number, "left": number },
       "itemSpacing": number,
       "layoutAlign": "STRETCH" | "INHERIT",
@@ -178,7 +178,10 @@ IMPORTANT: Use Background (${colors.background}) for page backgrounds, not pure 
 4. Use realistic, professional content (not "Lorem ipsum")
 5. Create complete, usable UI designs with proper hierarchy
 6. Ensure text is readable (minimum 12px font size, good contrast)
-7. Add appropriate padding and spacing for touch targets (minimum 44px for buttons)`
+7. Add appropriate padding and spacing for touch targets (minimum 44px for buttons)
+8. counterAxisAlignItems can ONLY be: "MIN", "CENTER", "MAX" (NOT "STRETCH" - use layoutAlign for that)
+9. Keep designs focused - max 3-4 levels of nesting to avoid response truncation
+10. Prefer fewer, well-designed elements over many simple ones`
 
   return prompt
 }
