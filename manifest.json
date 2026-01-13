@@ -6,7 +6,10 @@
   "ui": "dist/ui.html",
   "editorType": ["figma"],
   "networkAccess": {
-    "allowedDomains": ["https://api.anthropic.com"]
+    "allowedDomains": [
+      "https://api.anthropic.com",
+      "https://api.openai.com"
+    ]
   },
   "permissions": ["currentuser"]
 }
