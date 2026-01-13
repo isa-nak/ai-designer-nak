@@ -566,3 +566,125 @@ body {
 .chat-container::-webkit-scrollbar-thumb:hover {
   background: #aaa;
 }
+
+/* JSON Preview Button */
+.icon-button.has-json {
+  background: #e8f4fd;
+  border-color: #18a0fb;
+  color: #18a0fb;
+}
+
+/* JSON Preview Modal */
+.json-preview-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.json-preview-modal {
+  background: #fff;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.json-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f5f5f5;
+  border-radius: 8px 8px 0 0;
+}
+
+.json-preview-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.json-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.copy-json {
+  padding: 6px 12px;
+  background: #18a0fb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.copy-json:hover {
+  background: #0d8de5;
+}
+
+.close-json {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.close-json:hover {
+  background: #e0e0e0;
+}
+
+.json-preview-content {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #333;
+  background: #fafafa;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 0 0 8px 8px;
+}
+
+.json-preview-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.json-preview-content::-webkit-scrollbar-track {
+  background: #f0f0f0;
+}
+
+.json-preview-content::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+
+.json-preview-content::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}

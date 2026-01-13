@@ -47,6 +47,8 @@ export default function App() {
   const [designSystem, setDesignSystem] = useState<DesignSystemContext | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [jsonPreview, setJsonPreview] = useState<string | null>(null)
+  const [showJsonPreview, setShowJsonPreview] = useState(false)
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -201,6 +203,7 @@ export default function App() {
         existingDesign: selection ? selectionData || undefined : undefined,
         onProgress: (text) => {
           setStreamingContent(text)
+          setJsonPreview(text) // Store raw JSON for preview
           setMessages(prev => {
             const updated = [...prev]
             const lastIdx = updated.length - 1
@@ -217,6 +220,9 @@ export default function App() {
           })
         }
       })
+
+      // Store the final design JSON for preview
+      setJsonPreview(JSON.stringify(design, null, 2))
 
       parent.postMessage({
         pluginMessage: {
@@ -492,6 +498,14 @@ export default function App() {
         >
           📷
         </button>
+        <button
+          className={`icon-button ${jsonPreview ? 'has-json' : ''}`}
+          onClick={() => setShowJsonPreview(true)}
+          title="View JSON"
+          disabled={!jsonPreview}
+        >
+          {'{ }'}
+        </button>
         <input
           type="text"
           value={input}
@@ -508,6 +522,34 @@ export default function App() {
           {isGenerating ? '...' : selection ? 'Update' : 'Generate'}
         </button>
       </div>
+
+      {/* JSON Preview Modal */}
+      {showJsonPreview && jsonPreview && (
+        <div className="json-preview-overlay" onClick={() => setShowJsonPreview(false)}>
+          <div className="json-preview-modal" onClick={e => e.stopPropagation()}>
+            <div className="json-preview-header">
+              <h3>Generated JSON</h3>
+              <div className="json-preview-actions">
+                <button
+                  className="copy-json"
+                  onClick={() => {
+                    navigator.clipboard.writeText(jsonPreview)
+                    alert('JSON copied to clipboard!')
+                  }}
+                >
+                  Copy
+                </button>
+                <button className="close-json" onClick={() => setShowJsonPreview(false)}>
+                  ✕
+                </button>
+              </div>
+            </div>
+            <pre className="json-preview-content">
+              {jsonPreview}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
