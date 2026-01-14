@@ -114,6 +114,8 @@ export interface TextStyleInfo {
   fontFamily: string
   fontSize: number
   fontWeight: number
+  lineHeight?: number
+  letterSpacing?: number
 }
 
 
@@ -150,6 +152,8 @@ export interface ElementNode {
   y?: number
   // Auto-layout properties
   layoutMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL'
+  primaryAxisSizingMode?: 'FIXED' | 'HUG' | 'FILL'
+  counterAxisSizingMode?: 'FIXED' | 'HUG' | 'FILL'
   primaryAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN'
   counterAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX'
   layoutAlign?: 'STRETCH' | 'INHERIT' | 'MIN' | 'CENTER' | 'MAX'
@@ -157,6 +161,9 @@ export interface ElementNode {
   layoutPositioning?: 'AUTO' | 'ABSOLUTE'
   padding?: { top: number; right: number; bottom: number; left: number }
   itemSpacing?: number
+  // Spacing variable references (use instead of raw numbers)
+  paddingVariable?: string
+  itemSpacingVariable?: string
   // Appearance
   fills?: Fill[]
   strokes?: Stroke[]
@@ -170,6 +177,7 @@ export interface ElementNode {
   fontSize?: number
   fontWeight?: number
   fontFamily?: string
+  textStyleName?: string  // Reference to Figma text style by name
   textAlignHorizontal?: 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED'
   textAlignVertical?: 'TOP' | 'CENTER' | 'BOTTOM'
   lineHeight?: number | { value: number; unit: 'PIXELS' | 'PERCENT' }
@@ -183,17 +191,21 @@ export interface ElementNode {
   children?: ElementNode[]
 }
 
+// Extended fill with variable reference
 export interface Fill {
   type: 'SOLID' | 'GRADIENT_LINEAR' | 'GRADIENT_RADIAL' | 'IMAGE'
   color?: { r: number; g: number; b: number }
+  colorVariable?: string  // Reference to color variable by name
   opacity?: number
   gradientStops?: Array<{ position: number; color: { r: number; g: number; b: number; a?: number } }>
   visible?: boolean
 }
 
+// Extended stroke with variable reference
 export interface Stroke {
   type: 'SOLID'
-  color: { r: number; g: number; b: number }
+  color?: { r: number; g: number; b: number }
+  colorVariable?: string  // Reference to color variable by name
   opacity?: number
 }
 

@@ -688,3 +688,51 @@ body {
 .json-preview-content::-webkit-scrollbar-thumb:hover {
   background: #aaa;
 }
+
+/* Main Viewport Selector */
+.viewport-selector-main {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.viewport-option-main {
+  flex: 1;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.viewport-option-main:hover {
+  border-color: #18a0fb;
+  background: #f0f7ff;
+}
+
+.viewport-option-main.active {
+  border-color: #18a0fb;
+  background: #18a0fb;
+  color: white;
+}
+
+/* Stop Button */
+.stop-button {
+  padding: 10px 16px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.stop-button:hover {
+  background: #cc0000;
+}

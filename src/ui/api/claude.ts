@@ -1,7 +1,11 @@
-import type { CustomColorPalette, DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
-import { buildSystemPrompt } from './prompts'
+/**
+ * Claude API handler for design generation
+ */
 
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages'
+import type { CustomColorPalette, DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
+import { API_CONFIG } from '../../shared/constants'
+import { parseDesignJson } from '../../shared/utils/jsonRepair'
+import { buildSystemPrompt } from './prompts'
 
 interface GenerationOptions {
   prompt: string
@@ -13,6 +17,7 @@ interface GenerationOptions {
   imageData?: string
   existingDesign?: FrameNode
   onProgress?: (text: string) => void
+  signal?: AbortSignal
 }
 
 interface ClaudeMessage {
@@ -20,23 +25,20 @@ interface ClaudeMessage {
   content: string | Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }>
 }
 
-// Stream design generation from Claude
-export async function streamClaudeGeneration(
-  options: GenerationOptions
-): Promise<FrameNode> {
-  const { prompt, apiKey, viewport, designSystem, contextInstructions, customColors, imageData, existingDesign, onProgress } = options
-
-  const systemPrompt = buildSystemPrompt(viewport, designSystem, contextInstructions, customColors)
-
-  // Build user message
-  let userContent: ClaudeMessage['content']
-
+/**
+ * Build the user message content based on inputs
+ */
+function buildUserContent(
+  prompt: string,
+  viewport: ViewportSize,
+  imageData?: string,
+  existingDesign?: FrameNode
+): ClaudeMessage['content'] {
   if (imageData) {
-    // Include image reference
     const base64Data = imageData.split(',')[1] || imageData
     const mediaType = imageData.includes('png') ? 'image/png' : 'image/jpeg'
 
-    userContent = [
+    return [
       {
         type: 'image',
         source: {
@@ -52,31 +54,53 @@ export async function streamClaudeGeneration(
           : `Reference the attached image for visual inspiration.\n\nUser request: ${prompt}\n\nGenerate the design JSON:`,
       },
     ]
-  } else if (existingDesign) {
-    userContent = `Here is the current design:\n${JSON.stringify(existingDesign, null, 2)}\n\nUser request: ${prompt}\n\nGenerate the updated design JSON maintaining the overall structure but applying the requested changes:`
-  } else {
-    userContent = `Create a ${viewport.name.toLowerCase()} screen design for: ${prompt}\n\nGenerate the design JSON:`
   }
 
-  const messages: ClaudeMessage[] = [
-    { role: 'user', content: userContent },
-  ]
+  if (existingDesign) {
+    return `Here is the current design:\n${JSON.stringify(existingDesign, null, 2)}\n\nUser request: ${prompt}\n\nGenerate the updated design JSON maintaining the overall structure but applying the requested changes:`
+  }
 
-  const response = await fetch(CLAUDE_API_URL, {
+  return `Create a ${viewport.name.toLowerCase()} screen design for: ${prompt}\n\nGenerate the design JSON:`
+}
+
+/**
+ * Stream design generation from Claude API
+ */
+export async function streamClaudeGeneration(options: GenerationOptions): Promise<FrameNode> {
+  const {
+    prompt,
+    apiKey,
+    viewport,
+    designSystem,
+    contextInstructions,
+    customColors,
+    imageData,
+    existingDesign,
+    onProgress,
+    signal,
+  } = options
+
+  const systemPrompt = buildSystemPrompt(viewport, designSystem, contextInstructions, customColors)
+  const userContent = buildUserContent(prompt, viewport, imageData, existingDesign)
+
+  const messages: ClaudeMessage[] = [{ role: 'user', content: userContent }]
+
+  const response = await fetch(API_CONFIG.CLAUDE.URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
+      'anthropic-version': API_CONFIG.CLAUDE.VERSION,
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 8192,
+      model: API_CONFIG.CLAUDE.MODEL,
+      max_tokens: API_CONFIG.CLAUDE.MAX_TOKENS,
       system: systemPrompt,
       messages,
       stream: true,
     }),
+    signal,
   })
 
   if (!response.ok) {
@@ -102,7 +126,7 @@ export async function streamClaudeGeneration(
 
     // Process complete SSE events
     const lines = buffer.split('\n')
-    buffer = lines.pop() || '' // Keep incomplete line in buffer
+    buffer = lines.pop() || ''
 
     for (const line of lines) {
       if (line.startsWith('data: ')) {
@@ -124,168 +148,12 @@ export async function streamClaudeGeneration(
           if (event.type === 'error') {
             throw new Error(event.error?.message || 'Stream error')
           }
-        } catch (e) {
+        } catch {
           // Ignore JSON parse errors for non-JSON lines
         }
       }
     }
   }
 
-  // Parse the final JSON
-  const design = parseDesignJson(fullText)
-  return design
-}
-
-// Attempt to repair truncated JSON
-function repairTruncatedJson(text: string): string {
-  let json = text.trim()
-
-  // Remove any trailing incomplete content after the last complete structure
-  // Find the last complete property value
-  const lastCompleteIndex = findLastCompleteIndex(json)
-  if (lastCompleteIndex > 0 && lastCompleteIndex < json.length - 1) {
-    json = json.slice(0, lastCompleteIndex + 1)
-  }
-
-  // Count unclosed brackets
-  let braceCount = 0
-  let bracketCount = 0
-  let inString = false
-  let escapeNext = false
-
-  for (const char of json) {
-    if (escapeNext) {
-      escapeNext = false
-      continue
-    }
-    if (char === '\\') {
-      escapeNext = true
-      continue
-    }
-    if (char === '"') {
-      inString = !inString
-      continue
-    }
-    if (inString) continue
-
-    if (char === '{') braceCount++
-    else if (char === '}') braceCount--
-    else if (char === '[') bracketCount++
-    else if (char === ']') bracketCount--
-  }
-
-  // Close any unclosed strings (rough heuristic)
-  if (inString) {
-    json += '"'
-  }
-
-  // Remove trailing comma if present
-  json = json.replace(/,\s*$/, '')
-
-  // Close unclosed brackets and braces
-  while (bracketCount > 0) {
-    json += ']'
-    bracketCount--
-  }
-  while (braceCount > 0) {
-    json += '}'
-    braceCount--
-  }
-
-  return json
-}
-
-// Find the last index where we have a complete JSON value
-function findLastCompleteIndex(json: string): number {
-  let lastGoodIndex = -1
-  let braceCount = 0
-  let bracketCount = 0
-  let inString = false
-  let escapeNext = false
-
-  for (let i = 0; i < json.length; i++) {
-    const char = json[i]
-
-    if (escapeNext) {
-      escapeNext = false
-      continue
-    }
-    if (char === '\\') {
-      escapeNext = true
-      continue
-    }
-    if (char === '"') {
-      inString = !inString
-      if (!inString) lastGoodIndex = i
-      continue
-    }
-    if (inString) continue
-
-    if (char === '{') braceCount++
-    else if (char === '}') {
-      braceCount--
-      if (braceCount >= 0) lastGoodIndex = i
-    } else if (char === '[') bracketCount++
-    else if (char === ']') {
-      bracketCount--
-      if (bracketCount >= 0) lastGoodIndex = i
-    } else if (char === ',' || char === ':') {
-      lastGoodIndex = i
-    } else if (/\d/.test(char)) {
-      lastGoodIndex = i
-    }
-  }
-
-  return lastGoodIndex
-}
-
-// Parse design JSON from response
-function parseDesignJson(text: string): FrameNode {
-  let jsonText = text.trim()
-
-  // Remove markdown code blocks if present
-  if (jsonText.startsWith('```')) {
-    const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/)
-    if (match) {
-      jsonText = match[1].trim()
-    }
-  }
-
-  // Try to find JSON object boundaries
-  const firstBrace = jsonText.indexOf('{')
-  const lastBrace = jsonText.lastIndexOf('}')
-
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    jsonText = jsonText.slice(firstBrace, lastBrace + 1)
-  } else if (firstBrace !== -1) {
-    // JSON might be truncated - extract from first brace
-    jsonText = jsonText.slice(firstBrace)
-  }
-
-  // First attempt: try parsing as-is
-  try {
-    const parsed = JSON.parse(jsonText)
-    if (parsed.name || parsed.children) {
-      return parsed as FrameNode
-    }
-  } catch {
-    // Continue to repair attempt
-  }
-
-  // Second attempt: try repairing truncated JSON
-  try {
-    const repairedJson = repairTruncatedJson(jsonText)
-    const parsed = JSON.parse(repairedJson)
-
-    if (!parsed.name && !parsed.children) {
-      throw new Error('Invalid design structure: missing name or children')
-    }
-
-    console.log('Successfully repaired truncated JSON')
-    return parsed as FrameNode
-  } catch (e) {
-    console.error('Failed to parse design JSON:', e)
-    console.error('Raw text:', text.slice(0, 500) + '...')
-    throw new Error(`Failed to parse response as JSON. The response may have been truncated. Try a simpler design request.`)
-  }
+  return parseDesignJson(fullText)
 }

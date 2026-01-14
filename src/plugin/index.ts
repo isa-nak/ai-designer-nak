@@ -1,7 +1,8 @@
 import type { MessageToPlugin, MessageToUI, PluginSettings, DesignSystemContext, SelectionInfo, ViewportSize } from '../shared/types'
 import { DEFAULT_COLOR_PALETTE } from '../shared/types'
-import { renderDesign } from './renderer'
+import { renderDesign } from './renderer/index'
 import { serializeSelection } from './serializer'
+import { extractDesignSystem } from './designSystem'
 
 figma.showUI(__html__, { width: 420, height: 650 })
 
@@ -101,93 +102,6 @@ async function sendDesignSystem() {
   const designSystem = await extractDesignSystem()
   cachedDesignSystem = designSystem
   sendToUI({ type: 'design-system-loaded', designSystem })
-}
-
-async function extractDesignSystem(): Promise<DesignSystemContext> {
-  const colorVariables: DesignSystemContext['colorVariables'] = []
-  const spacingVariables: DesignSystemContext['spacingVariables'] = []
-
-  // Extract local variables
-  try {
-    const collections = await figma.variables.getLocalVariableCollectionsAsync()
-    for (const collection of collections) {
-      for (const variableId of collection.variableIds) {
-        const variable = await figma.variables.getVariableByIdAsync(variableId)
-        if (!variable) continue
-
-        const modeId = Object.keys(variable.valuesByMode)[0]
-        const value = variable.valuesByMode[modeId]
-
-        if (variable.resolvedType === 'COLOR' && typeof value === 'object' && 'r' in value) {
-          colorVariables.push({
-            id: variable.id,
-            name: variable.name,
-            collection: collection.name,
-            value: rgbToHex(value as RGB)
-          })
-        } else if (variable.resolvedType === 'FLOAT' && typeof value === 'number') {
-          spacingVariables.push({
-            id: variable.id,
-            name: variable.name,
-            collection: collection.name,
-            value: value
-          })
-        }
-      }
-    }
-  } catch (e) {
-    // Variables API might not be available
-    console.log('Could not extract variables:', e)
-  }
-
-  // Extract text styles
-  const textStyles: DesignSystemContext['textStyles'] = []
-  try {
-    const localTextStyles = await figma.getLocalTextStylesAsync()
-    for (const style of localTextStyles) {
-      textStyles.push({
-        id: style.id,
-        name: style.name,
-        fontFamily: style.fontName.family,
-        fontSize: style.fontSize as number,
-        fontWeight: getFontWeight(style.fontName.style)
-      })
-    }
-  } catch (e) {
-    console.log('Could not extract text styles:', e)
-  }
-
-  // Extract local components
-  const components: DesignSystemContext['components'] = []
-  try {
-    const localComponents = figma.root.findAllWithCriteria({ types: ['COMPONENT'] })
-    for (const comp of localComponents.slice(0, 50)) { // Limit to 50
-      components.push({
-        key: comp.key,
-        name: comp.name,
-        description: comp.description || undefined
-      })
-    }
-  } catch (e) {
-    console.log('Could not extract components:', e)
-  }
-
-  return { colorVariables, spacingVariables, textStyles, components }
-}
-
-function rgbToHex(color: RGB): string {
-  const r = Math.round(color.r * 255)
-  const g = Math.round(color.g * 255)
-  const b = Math.round(color.b * 255)
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-}
-
-function getFontWeight(style: string): number {
-  const weights: Record<string, number> = {
-    'Thin': 100, 'ExtraLight': 200, 'Light': 300, 'Regular': 400,
-    'Medium': 500, 'SemiBold': 600, 'Bold': 700, 'ExtraBold': 800, 'Black': 900
-  }
-  return weights[style] || 400
 }
 
 // Render design from Claude's JSON output

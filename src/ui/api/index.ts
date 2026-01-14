@@ -13,6 +13,7 @@ export interface GenerationOptions {
   imageData?: string
   existingDesign?: FrameNode
   onProgress?: (text: string) => void
+  signal?: AbortSignal
 }
 
 // Unified design generation function that routes to the appropriate provider

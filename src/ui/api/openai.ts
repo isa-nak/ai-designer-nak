@@ -1,7 +1,11 @@
-import type { CustomColorPalette, DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
-import { buildSystemPrompt } from './prompts'
+/**
+ * OpenAI API handler for design generation
+ */
 
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
+import type { CustomColorPalette, DesignSystemContext, FrameNode, ViewportSize } from '../../shared/types'
+import { API_CONFIG } from '../../shared/constants'
+import { parseDesignJson } from '../../shared/utils/jsonRepair'
+import { buildSystemPrompt } from './prompts'
 
 interface GenerationOptions {
   prompt: string
@@ -13,6 +17,7 @@ interface GenerationOptions {
   imageData?: string
   existingDesign?: FrameNode
   onProgress?: (text: string) => void
+  signal?: AbortSignal
 }
 
 interface OpenAIMessage {
@@ -20,20 +25,17 @@ interface OpenAIMessage {
   content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
 }
 
-// Stream design generation from OpenAI
-export async function streamOpenAIGeneration(
-  options: GenerationOptions
-): Promise<FrameNode> {
-  const { prompt, apiKey, viewport, designSystem, contextInstructions, customColors, imageData, existingDesign, onProgress } = options
-
-  const systemPrompt = buildSystemPrompt(viewport, designSystem, contextInstructions, customColors)
-
-  // Build user message
-  let userContent: OpenAIMessage['content']
-
+/**
+ * Build the user message content based on inputs
+ */
+function buildUserContent(
+  prompt: string,
+  viewport: ViewportSize,
+  imageData?: string,
+  existingDesign?: FrameNode
+): OpenAIMessage['content'] {
   if (imageData) {
-    // Include image reference
-    userContent = [
+    return [
       {
         type: 'image_url',
         image_url: { url: imageData },
@@ -45,29 +47,53 @@ export async function streamOpenAIGeneration(
           : `Reference the attached image for visual inspiration.\n\nUser request: ${prompt}\n\nGenerate the design JSON:`,
       },
     ]
-  } else if (existingDesign) {
-    userContent = `Here is the current design:\n${JSON.stringify(existingDesign, null, 2)}\n\nUser request: ${prompt}\n\nGenerate the updated design JSON maintaining the overall structure but applying the requested changes:`
-  } else {
-    userContent = `Create a ${viewport.name.toLowerCase()} screen design for: ${prompt}\n\nGenerate the design JSON:`
   }
+
+  if (existingDesign) {
+    return `Here is the current design:\n${JSON.stringify(existingDesign, null, 2)}\n\nUser request: ${prompt}\n\nGenerate the updated design JSON maintaining the overall structure but applying the requested changes:`
+  }
+
+  return `Create a ${viewport.name.toLowerCase()} screen design for: ${prompt}\n\nGenerate the design JSON:`
+}
+
+/**
+ * Stream design generation from OpenAI API
+ */
+export async function streamOpenAIGeneration(options: GenerationOptions): Promise<FrameNode> {
+  const {
+    prompt,
+    apiKey,
+    viewport,
+    designSystem,
+    contextInstructions,
+    customColors,
+    imageData,
+    existingDesign,
+    onProgress,
+    signal,
+  } = options
+
+  const systemPrompt = buildSystemPrompt(viewport, designSystem, contextInstructions, customColors)
+  const userContent = buildUserContent(prompt, viewport, imageData, existingDesign)
 
   const messages: OpenAIMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userContent },
   ]
 
-  const response = await fetch(OPENAI_API_URL, {
+  const response = await fetch(API_CONFIG.OPENAI.URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 8192,
+      model: API_CONFIG.OPENAI.MODEL,
+      max_tokens: API_CONFIG.OPENAI.MAX_TOKENS,
       messages,
       stream: true,
     }),
+    signal,
   })
 
   if (!response.ok) {
@@ -93,7 +119,7 @@ export async function streamOpenAIGeneration(
 
     // Process complete SSE events
     const lines = buffer.split('\n')
-    buffer = lines.pop() || '' // Keep incomplete line in buffer
+    buffer = lines.pop() || ''
 
     for (const line of lines) {
       if (line.startsWith('data: ')) {
@@ -102,154 +128,22 @@ export async function streamOpenAIGeneration(
 
         try {
           const event = JSON.parse(data)
-          const delta = event.choices?.[0]?.delta?.content
+          const content = event.choices?.[0]?.delta?.content
 
-          if (delta) {
-            fullText += delta
+          if (content) {
+            fullText += content
             onProgress?.(fullText)
           }
 
           if (event.choices?.[0]?.finish_reason === 'stop') {
             break
           }
-        } catch (e) {
+        } catch {
           // Ignore JSON parse errors for non-JSON lines
         }
       }
     }
   }
 
-  // Parse the final JSON
-  const design = parseDesignJson(fullText)
-  return design
-}
-
-// Attempt to repair truncated JSON
-function repairTruncatedJson(text: string): string {
-  let json = text.trim()
-
-  // Find the last complete property value
-  const lastCompleteIndex = findLastCompleteIndex(json)
-  if (lastCompleteIndex > 0 && lastCompleteIndex < json.length - 1) {
-    json = json.slice(0, lastCompleteIndex + 1)
-  }
-
-  // Count unclosed brackets
-  let braceCount = 0
-  let bracketCount = 0
-  let inString = false
-  let escapeNext = false
-
-  for (const char of json) {
-    if (escapeNext) {
-      escapeNext = false
-      continue
-    }
-    if (char === '\\') {
-      escapeNext = true
-      continue
-    }
-    if (char === '"') {
-      inString = !inString
-      continue
-    }
-    if (inString) continue
-
-    if (char === '{') braceCount++
-    else if (char === '}') braceCount--
-    else if (char === '[') bracketCount++
-    else if (char === ']') bracketCount--
-  }
-
-  if (inString) json += '"'
-  json = json.replace(/,\s*$/, '')
-
-  while (bracketCount > 0) {
-    json += ']'
-    bracketCount--
-  }
-  while (braceCount > 0) {
-    json += '}'
-    braceCount--
-  }
-
-  return json
-}
-
-function findLastCompleteIndex(json: string): number {
-  let lastGoodIndex = -1
-  let braceCount = 0
-  let bracketCount = 0
-  let inString = false
-  let escapeNext = false
-
-  for (let i = 0; i < json.length; i++) {
-    const char = json[i]
-    if (escapeNext) { escapeNext = false; continue }
-    if (char === '\\') { escapeNext = true; continue }
-    if (char === '"') {
-      inString = !inString
-      if (!inString) lastGoodIndex = i
-      continue
-    }
-    if (inString) continue
-
-    if (char === '{') braceCount++
-    else if (char === '}') { braceCount--; if (braceCount >= 0) lastGoodIndex = i }
-    else if (char === '[') bracketCount++
-    else if (char === ']') { bracketCount--; if (bracketCount >= 0) lastGoodIndex = i }
-    else if (char === ',' || char === ':' || /\d/.test(char)) lastGoodIndex = i
-  }
-
-  return lastGoodIndex
-}
-
-// Parse design JSON from response
-function parseDesignJson(text: string): FrameNode {
-  let jsonText = text.trim()
-
-  // Remove markdown code blocks if present
-  if (jsonText.startsWith('```')) {
-    const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/)
-    if (match) {
-      jsonText = match[1].trim()
-    }
-  }
-
-  // Try to find JSON object boundaries
-  const firstBrace = jsonText.indexOf('{')
-  const lastBrace = jsonText.lastIndexOf('}')
-
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    jsonText = jsonText.slice(firstBrace, lastBrace + 1)
-  } else if (firstBrace !== -1) {
-    jsonText = jsonText.slice(firstBrace)
-  }
-
-  // First attempt: try parsing as-is
-  try {
-    const parsed = JSON.parse(jsonText)
-    if (parsed.name || parsed.children) {
-      return parsed as FrameNode
-    }
-  } catch {
-    // Continue to repair attempt
-  }
-
-  // Second attempt: try repairing truncated JSON
-  try {
-    const repairedJson = repairTruncatedJson(jsonText)
-    const parsed = JSON.parse(repairedJson)
-
-    if (!parsed.name && !parsed.children) {
-      throw new Error('Invalid design structure: missing name or children')
-    }
-
-    console.log('Successfully repaired truncated JSON')
-    return parsed as FrameNode
-  } catch (e) {
-    console.error('Failed to parse design JSON:', e)
-    console.error('Raw text:', text.slice(0, 500) + '...')
-    throw new Error(`Failed to parse response as JSON. The response may have been truncated. Try a simpler design request.`)
-  }
+  return parseDesignJson(fullText)
 }

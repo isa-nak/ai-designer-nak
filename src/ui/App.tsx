@@ -52,6 +52,7 @@ export default function App() {
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Get current API key based on selected provider
   const currentApiKey = settings.selectedProvider === 'claude'
@@ -159,6 +160,33 @@ export default function App() {
     parent.postMessage({ pluginMessage: { type: 'save-settings', settings: newSettings } }, '*')
   }
 
+  const handleViewportChange = (viewport: ViewportPreset) => {
+    const newSettings = { ...settings, viewport }
+    setSettings(newSettings)
+    parent.postMessage({ pluginMessage: { type: 'save-settings', settings: newSettings } }, '*')
+  }
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      setIsGenerating(false)
+      setStreamingContent('')
+      setMessages(prev => {
+        const updated = [...prev]
+        const lastIdx = updated.length - 1
+        if (lastIdx >= 0 && updated[lastIdx].isStreaming) {
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            content: 'Generation stopped.',
+            isStreaming: false
+          }
+        }
+        return updated
+      })
+    }
+  }
+
   const handleSubmit = async () => {
     if (!input.trim() && !imageData) return
     if (!currentApiKey) {
@@ -190,6 +218,9 @@ export default function App() {
 
     const viewport = VIEWPORT_PRESETS[settings.viewport]
 
+    // Create abort controller for this generation
+    abortControllerRef.current = new AbortController()
+
     try {
       const design = await generateDesign({
         prompt: input,
@@ -201,6 +232,7 @@ export default function App() {
         customColors: settings.customColors,
         imageData: imageData || undefined,
         existingDesign: selection ? selectionData || undefined : undefined,
+        signal: abortControllerRef.current.signal,
         onProgress: (text) => {
           setStreamingContent(text)
           setJsonPreview(text) // Store raw JSON for preview
@@ -233,6 +265,10 @@ export default function App() {
       }, '*')
 
     } catch (error) {
+      // Check if this was an abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        return // Already handled in handleStop
+      }
       setIsGenerating(false)
       setStreamingContent('')
       setMessages(prev => {
@@ -247,6 +283,8 @@ export default function App() {
         }
         return updated
       })
+    } finally {
+      abortControllerRef.current = null
     }
   }
 
@@ -260,6 +298,32 @@ export default function App() {
     }
     reader.readAsDataURL(file)
   }
+
+  // Handle paste event for images (Cmd+V / Ctrl+V)
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const file = item.getAsFile()
+          if (!file) continue
+
+          const reader = new FileReader()
+          reader.onload = () => {
+            setImageData(reader.result as string)
+          }
+          reader.readAsDataURL(file)
+          break
+        }
+      }
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [])
 
   const viewportOptions: ViewportPreset[] = ['mobile', 'tablet', 'desktop']
   const providerOptions: AIProvider[] = ['claude', 'openai']
@@ -311,24 +375,6 @@ export default function App() {
                   onChange={e => setSettings({ ...settings, openaiApiKey: e.target.value })}
                   placeholder="sk-..."
                 />
-              </label>
-
-              <label>
-                Viewport
-                <div className="viewport-selector">
-                  {viewportOptions.map(v => (
-                    <button
-                      key={v}
-                      className={`viewport-option ${settings.viewport === v ? 'active' : ''}`}
-                      onClick={() => setSettings({ ...settings, viewport: v })}
-                    >
-                      {VIEWPORT_PRESETS[v].name}
-                      <span className="viewport-size">
-                        {VIEWPORT_PRESETS[v].width}x{VIEWPORT_PRESETS[v].height}
-                      </span>
-                    </button>
-                  ))}
-                </div>
               </label>
 
               <label>
@@ -419,6 +465,19 @@ export default function App() {
             </button>
           )
         })}
+      </div>
+
+      {/* Viewport Selector */}
+      <div className="viewport-selector-main">
+        {viewportOptions.map(v => (
+          <button
+            key={v}
+            className={`viewport-option-main ${settings.viewport === v ? 'active' : ''}`}
+            onClick={() => handleViewportChange(v)}
+          >
+            {VIEWPORT_PRESETS[v].name}
+          </button>
+        ))}
       </div>
 
       {/* Design System Info */}
@@ -514,13 +573,21 @@ export default function App() {
           placeholder={selection ? 'Describe changes to selection...' : 'Describe a screen to generate...'}
           disabled={isGenerating}
         />
-        <button
-          onClick={handleSubmit}
-          disabled={isGenerating || (!input.trim() && !imageData)}
-          className={isGenerating ? 'generating' : ''}
-        >
-          {isGenerating ? '...' : selection ? 'Update' : 'Generate'}
-        </button>
+        {isGenerating ? (
+          <button
+            onClick={handleStop}
+            className="stop-button"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            onClick={handleSubmit}
+            disabled={!input.trim() && !imageData}
+          >
+            {selection ? 'Update' : 'Generate'}
+          </button>
+        )}
       </div>
 
       {/* JSON Preview Modal */}

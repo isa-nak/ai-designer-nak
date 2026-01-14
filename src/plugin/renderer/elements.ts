@@ -1,52 +1,14 @@
-import type { FrameNode as DesignFrame, ElementNode, Fill, Stroke, Effect, DesignSystemContext } from '../shared/types'
+/**
+ * Element rendering functions for different node types
+ */
 
-// Cache for loaded fonts
-const loadedFonts = new Set<string>()
-
-// Main render function
-export async function renderDesign(
-  design: DesignFrame,
-  viewport: { width: number; height: number },
-  designSystem: DesignSystemContext | null
-): Promise<FrameNode> {
-  const frame = figma.createFrame()
-  frame.name = design.name || 'Generated Screen'
-  frame.resize(viewport.width, viewport.height)
-
-  // Position at viewport center
-  frame.x = figma.viewport.center.x - viewport.width / 2
-  frame.y = figma.viewport.center.y - viewport.height / 2
-
-  // Ensure root frame has auto layout if not specified
-  if (!design.layoutMode || design.layoutMode === 'NONE') {
-    design.layoutMode = 'VERTICAL'
-    design.primaryAxisAlignItems = design.primaryAxisAlignItems || 'MIN'
-    design.counterAxisAlignItems = design.counterAxisAlignItems || 'CENTER'
-  }
-
-  // Apply frame properties
-  await applyFrameProperties(frame, design, designSystem)
-
-  // For root frame, set fixed size to viewport dimensions
-  frame.primaryAxisSizingMode = 'FIXED'
-  frame.counterAxisSizingMode = 'FIXED'
-  frame.resize(viewport.width, viewport.height)
-
-  // Render children
-  if (design.children) {
-    for (const child of design.children) {
-      const node = await renderElement(child, designSystem)
-      if (node) {
-        frame.appendChild(node)
-      }
-    }
-  }
-
-  return frame
-}
+import type { FrameNode as DesignFrame, ElementNode, DesignSystemContext } from '../../shared/types'
+import { findTextStyle } from './styleCache'
+import { convertFillWithVariable, convertStrokeWithVariable, convertEffect } from './paints'
+import { loadFont, getFontStyle } from './fontLoader'
 
 // Render a single element
-async function renderElement(
+export async function renderElement(
   element: ElementNode,
   designSystem: DesignSystemContext | null
 ): Promise<SceneNode | null> {
@@ -80,7 +42,7 @@ async function renderElement(
 }
 
 // Render frame (container with auto-layout)
-async function renderFrame(
+export async function renderFrame(
   element: ElementNode,
   designSystem: DesignSystemContext | null
 ): Promise<FrameNode> {
@@ -103,7 +65,7 @@ async function renderFrame(
 }
 
 // Apply properties common to frames
-async function applyFrameProperties(
+export async function applyFrameProperties(
   frame: FrameNode,
   props: ElementNode | DesignFrame,
   designSystem: DesignSystemContext | null
@@ -140,19 +102,65 @@ async function applyFrameProperties(
       frame.paddingLeft = props.padding.left
     }
 
-    // Sizing modes for auto-layout
-    frame.primaryAxisSizingMode = 'AUTO'
-    frame.counterAxisSizingMode = 'AUTO'
+    // Sizing modes for auto-layout - CRITICAL for preventing 1px elements
+    if ('primaryAxisSizingMode' in props && props.primaryAxisSizingMode) {
+      const sizingMode = props.primaryAxisSizingMode
+      if (sizingMode === 'HUG') {
+        frame.primaryAxisSizingMode = 'AUTO'
+      } else if (sizingMode === 'FIXED') {
+        frame.primaryAxisSizingMode = 'FIXED'
+      } else if (sizingMode === 'FILL') {
+        // FILL means the element should grow - handled by layoutGrow
+        frame.primaryAxisSizingMode = 'AUTO'
+      }
+    } else {
+      // Default to HUG (AUTO) to prevent 1px issues
+      frame.primaryAxisSizingMode = 'AUTO'
+    }
+
+    if ('counterAxisSizingMode' in props && props.counterAxisSizingMode) {
+      const sizingMode = props.counterAxisSizingMode
+      if (sizingMode === 'HUG') {
+        frame.counterAxisSizingMode = 'AUTO'
+      } else if (sizingMode === 'FIXED') {
+        frame.counterAxisSizingMode = 'FIXED'
+      } else if (sizingMode === 'FILL') {
+        // FILL on counter axis means STRETCH
+        frame.counterAxisSizingMode = 'AUTO'
+      }
+    } else {
+      // Default to HUG (AUTO) to prevent 1px issues
+      frame.counterAxisSizingMode = 'AUTO'
+    }
   }
 
-  // Fills
+  // Apply fills with variable support
   if (props.fills && props.fills.length > 0) {
-    frame.fills = props.fills.map(f => convertFill(f)).filter(Boolean) as Paint[]
+    const paints: Paint[] = []
+    for (const fill of props.fills) {
+      const paint = await convertFillWithVariable(frame, fill)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      frame.fills = paints
+    }
   }
 
-  // Strokes
+  // Apply strokes with variable support
   if (props.strokes && props.strokes.length > 0) {
-    frame.strokes = props.strokes.map(s => convertStroke(s)).filter(Boolean) as Paint[]
+    const paints: Paint[] = []
+    for (const stroke of props.strokes) {
+      const paint = await convertStrokeWithVariable(frame, stroke)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      frame.strokes = paints
+    }
+  }
+
+  // Stroke weight
+  if ('strokeWeight' in props && props.strokeWeight !== undefined) {
+    frame.strokeWeight = props.strokeWeight
   }
 
   // Corner radius
@@ -195,7 +203,7 @@ async function applyFrameProperties(
   }
 }
 
-// Render text element
+// Render text element with text style support
 async function renderText(
   element: ElementNode,
   designSystem: DesignSystemContext | null
@@ -203,7 +211,64 @@ async function renderText(
   const text = figma.createText()
   text.name = element.name || 'Text'
 
-  // Load font before setting characters
+  // Check if we should apply a text style
+  if (element.textStyleName) {
+    const textStyle = findTextStyle(element.textStyleName)
+    if (textStyle) {
+      // Load the font from the style
+      await figma.loadFontAsync(textStyle.fontName)
+      text.characters = element.characters || ''
+      // Apply the text style
+      text.textStyleId = textStyle.id
+    } else {
+      // Style not found, fall back to manual properties
+      console.log(`Text style "${element.textStyleName}" not found, using fallback`)
+      await applyManualTextProperties(text, element)
+    }
+  } else {
+    // No style specified, use manual properties
+    await applyManualTextProperties(text, element)
+  }
+
+  // Apply fills with variable support (text color)
+  if (element.fills && element.fills.length > 0) {
+    const paints: Paint[] = []
+    for (const fill of element.fills) {
+      const paint = await convertFillWithVariable(text, fill)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      text.fills = paints
+    }
+  }
+
+  // Size constraints
+  if (element.width !== undefined) {
+    text.resize(element.width, text.height)
+    text.textAutoResize = 'HEIGHT'
+  }
+
+  // Layout properties for auto-layout
+  if (element.layoutAlign) {
+    if (element.layoutAlign === 'STRETCH') {
+      text.layoutAlign = 'STRETCH'
+      text.textAutoResize = 'HEIGHT'
+    }
+  }
+  if (element.layoutGrow !== undefined) {
+    text.layoutGrow = element.layoutGrow
+  }
+
+  // Opacity
+  if (element.opacity !== undefined) {
+    text.opacity = element.opacity
+  }
+
+  return text
+}
+
+// Apply manual text properties when no style is used
+async function applyManualTextProperties(text: TextNode, element: ElementNode): Promise<void> {
   const fontFamily = element.fontFamily || 'Inter'
   const fontWeight = element.fontWeight || 400
   const fontStyle = getFontStyle(fontWeight)
@@ -250,35 +315,6 @@ async function renderText(
   if (element.textCase) {
     text.textCase = element.textCase
   }
-
-  // Fills (text color)
-  if (element.fills && element.fills.length > 0) {
-    text.fills = element.fills.map(f => convertFill(f)).filter(Boolean) as Paint[]
-  }
-
-  // Size constraints
-  if (element.width !== undefined) {
-    text.resize(element.width, text.height)
-    text.textAutoResize = 'HEIGHT'
-  }
-
-  // Layout properties for auto-layout
-  if (element.layoutAlign) {
-    if (element.layoutAlign === 'STRETCH') {
-      text.layoutAlign = 'STRETCH'
-      text.textAutoResize = 'HEIGHT'
-    }
-  }
-  if (element.layoutGrow !== undefined) {
-    text.layoutGrow = element.layoutGrow
-  }
-
-  // Opacity
-  if (element.opacity !== undefined) {
-    text.opacity = element.opacity
-  }
-
-  return text
 }
 
 // Render rectangle
@@ -294,16 +330,30 @@ async function renderRectangle(
     rect.resize(element.width, element.height)
   }
 
-  // Fills
+  // Apply fills with variable support
   if (element.fills && element.fills.length > 0) {
-    rect.fills = element.fills.map(f => convertFill(f)).filter(Boolean) as Paint[]
+    const paints: Paint[] = []
+    for (const fill of element.fills) {
+      const paint = await convertFillWithVariable(rect, fill)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      rect.fills = paints
+    }
   }
 
-  // Strokes
+  // Apply strokes with variable support
   if (element.strokes && element.strokes.length > 0) {
-    rect.strokes = element.strokes.map(s => convertStroke(s)).filter(Boolean) as Paint[]
-    if (element.strokeWeight !== undefined) {
-      rect.strokeWeight = element.strokeWeight
+    const paints: Paint[] = []
+    for (const stroke of element.strokes) {
+      const paint = await convertStrokeWithVariable(rect, stroke)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      rect.strokes = paints
+      if (element.strokeWeight !== undefined) {
+        rect.strokeWeight = element.strokeWeight
+      }
     }
   }
 
@@ -348,16 +398,30 @@ async function renderEllipse(
     ellipse.resize(element.width, element.height)
   }
 
-  // Fills
+  // Apply fills with variable support
   if (element.fills && element.fills.length > 0) {
-    ellipse.fills = element.fills.map(f => convertFill(f)).filter(Boolean) as Paint[]
+    const paints: Paint[] = []
+    for (const fill of element.fills) {
+      const paint = await convertFillWithVariable(ellipse, fill)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      ellipse.fills = paints
+    }
   }
 
-  // Strokes
+  // Apply strokes with variable support
   if (element.strokes && element.strokes.length > 0) {
-    ellipse.strokes = element.strokes.map(s => convertStroke(s)).filter(Boolean) as Paint[]
-    if (element.strokeWeight !== undefined) {
-      ellipse.strokeWeight = element.strokeWeight
+    const paints: Paint[] = []
+    for (const stroke of element.strokes) {
+      const paint = await convertStrokeWithVariable(ellipse, stroke)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      ellipse.strokes = paints
+      if (element.strokeWeight !== undefined) {
+        ellipse.strokeWeight = element.strokeWeight
+      }
     }
   }
 
@@ -387,11 +451,18 @@ async function renderLine(
     line.resize(element.width, 0)
   }
 
-  // Strokes
+  // Apply strokes with variable support
   if (element.strokes && element.strokes.length > 0) {
-    line.strokes = element.strokes.map(s => convertStroke(s)).filter(Boolean) as Paint[]
-    if (element.strokeWeight !== undefined) {
-      line.strokeWeight = element.strokeWeight
+    const paints: Paint[] = []
+    for (const stroke of element.strokes) {
+      const paint = await convertStrokeWithVariable(line, stroke)
+      if (paint) paints.push(paint)
+    }
+    if (paints.length > 0) {
+      line.strokes = paints
+      if (element.strokeWeight !== undefined) {
+        line.strokeWeight = element.strokeWeight
+      }
     }
   } else {
     // Default stroke for visibility
@@ -451,147 +522,5 @@ async function renderInstance(
     // Component not found, fallback to frame with children
     console.log(`Component ${element.componentKey} not found, rendering as frame`)
     return renderFrame(element, designSystem)
-  }
-}
-
-// Convert our Fill type to Figma Paint
-function convertFill(fill: Fill): Paint | null {
-  if (fill.visible === false) return null
-
-  if (fill.type === 'SOLID' && fill.color) {
-    return {
-      type: 'SOLID',
-      color: { r: fill.color.r, g: fill.color.g, b: fill.color.b },
-      opacity: fill.opacity ?? 1,
-    }
-  }
-
-  if (fill.type === 'GRADIENT_LINEAR' && fill.gradientStops) {
-    return {
-      type: 'GRADIENT_LINEAR',
-      gradientStops: fill.gradientStops.map(stop => ({
-        position: stop.position,
-        color: {
-          r: stop.color.r,
-          g: stop.color.g,
-          b: stop.color.b,
-          a: stop.color.a ?? 1,
-        },
-      })),
-      gradientTransform: [
-        [1, 0, 0],
-        [0, 1, 0],
-      ],
-    }
-  }
-
-  return null
-}
-
-// Convert our Stroke type to Figma Paint
-function convertStroke(stroke: Stroke): Paint | null {
-  return {
-    type: 'SOLID',
-    color: { r: stroke.color.r, g: stroke.color.g, b: stroke.color.b },
-    opacity: stroke.opacity ?? 1,
-  }
-}
-
-// Convert our Effect type to Figma Effect
-function convertEffect(effect: Effect): Effect | null {
-  if (effect.visible === false) return null
-
-  if (effect.type === 'DROP_SHADOW' && effect.color) {
-    return {
-      type: 'DROP_SHADOW',
-      color: effect.color,
-      offset: effect.offset || { x: 0, y: 4 },
-      radius: effect.radius ?? 8,
-      spread: effect.spread ?? 0,
-      visible: true,
-      blendMode: 'NORMAL',
-    }
-  }
-
-  if (effect.type === 'INNER_SHADOW' && effect.color) {
-    return {
-      type: 'INNER_SHADOW',
-      color: effect.color,
-      offset: effect.offset || { x: 0, y: 2 },
-      radius: effect.radius ?? 4,
-      spread: effect.spread ?? 0,
-      visible: true,
-      blendMode: 'NORMAL',
-    }
-  }
-
-  if (effect.type === 'LAYER_BLUR') {
-    return {
-      type: 'LAYER_BLUR',
-      radius: effect.radius ?? 4,
-      visible: true,
-    }
-  }
-
-  if (effect.type === 'BACKGROUND_BLUR') {
-    return {
-      type: 'BACKGROUND_BLUR',
-      radius: effect.radius ?? 10,
-      visible: true,
-    }
-  }
-
-  return null
-}
-
-// Get font style name from weight
-function getFontStyle(weight: number): string {
-  const styles: Record<number, string> = {
-    100: 'Thin',
-    200: 'ExtraLight',
-    300: 'Light',
-    400: 'Regular',
-    500: 'Medium',
-    600: 'SemiBold',
-    700: 'Bold',
-    800: 'ExtraBold',
-    900: 'Black',
-  }
-  return styles[weight] || 'Regular'
-}
-
-// Load a font and return the actually loaded font
-async function loadFont(family: string, style: string): Promise<FontName> {
-  const fontKey = `${family}-${style}`
-
-  // Check if already loaded
-  if (loadedFonts.has(fontKey)) {
-    return { family, style }
-  }
-
-  try {
-    await figma.loadFontAsync({ family, style })
-    loadedFonts.add(fontKey)
-    return { family, style }
-  } catch {
-    // Try Inter with same style
-    if (family !== 'Inter') {
-      try {
-        await figma.loadFontAsync({ family: 'Inter', style })
-        loadedFonts.add(`Inter-${style}`)
-        return { family: 'Inter', style }
-      } catch {
-        // Fallback to Inter Regular
-      }
-    }
-
-    // Final fallback: Inter Regular
-    try {
-      await figma.loadFontAsync({ family: 'Inter', style: 'Regular' })
-      loadedFonts.add('Inter-Regular')
-    } catch {
-      // Inter Regular should always be available
-    }
-    return { family: 'Inter', style: 'Regular' }
   }
 }
