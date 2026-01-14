@@ -211,14 +211,19 @@ async function renderText(
   const text = figma.createText()
   text.name = element.name || 'Text'
 
+  // Always load Inter Regular first - it's the default font on new text nodes
+  // This must be done before setting characters
+  await figma.loadFontAsync({ family: 'Inter', style: 'Regular' })
+
   // Check if we should apply a text style
   if (element.textStyleName) {
     const textStyle = findTextStyle(element.textStyleName)
     if (textStyle) {
       // Load the font from the style
       await figma.loadFontAsync(textStyle.fontName)
+      // Set characters first (now safe because Inter Regular is loaded)
       text.characters = element.characters || ''
-      // Apply the text style
+      // Apply the text style - this changes the font
       text.textStyleId = textStyle.id
     } else {
       // Style not found, fall back to manual properties

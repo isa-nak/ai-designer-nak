@@ -26,41 +26,28 @@ export async function convertFillWithVariable(node: SceneNode, fill: Fill): Prom
   if (fill.colorVariable) {
     const variable = findColorVariable(fill.colorVariable)
     if (variable) {
-      // Create a solid paint and bind to variable
-      const paint: SolidPaint = {
-        type: 'SOLID',
-        color: { r: 0.5, g: 0.5, b: 0.5 }, // Placeholder, will be overridden by variable
-        opacity: getOpacity(fill),
-      }
-
-      // Try to bind the fill to the variable
-      try {
-        if ('fills' in node) {
-          // We need to set fills first, then bind
-          const currentFills = [...(node.fills as Paint[])]
-          currentFills.push(paint)
-          node.fills = currentFills
-
-          // Now bind the last fill to the variable
-          const fillIndex = currentFills.length - 1
-          node.setBoundVariable('fills', fillIndex, 'color', variable)
-
-          // Return null since we already added it
-          return null
-        }
-      } catch (e) {
-        console.log(`Could not bind variable ${fill.colorVariable}:`, e)
-      }
-
-      // Fall back to getting the variable's value
+      // Get the variable's color value
       const modeId = Object.keys(variable.valuesByMode)[0]
       const colorValue = variable.valuesByMode[modeId]
+
       if (colorValue && typeof colorValue === 'object' && 'r' in colorValue) {
-        return {
+        const paint: SolidPaint = {
           type: 'SOLID',
           color: toRGB(colorValue as { r: number; g: number; b: number }),
           opacity: getOpacity(fill),
         }
+
+        // Try to bind to variable for live updates (optional enhancement)
+        try {
+          if ('fills' in node && figma.variables && 'setBoundVariableForPaint' in figma.variables) {
+            const boundPaint = figma.variables.setBoundVariableForPaint(paint, 'color', variable)
+            return boundPaint
+          }
+        } catch (e) {
+          // Binding failed, but we already have the color value - continue with static paint
+        }
+
+        return paint
       }
     } else {
       console.log(`Color variable "${fill.colorVariable}" not found`)
@@ -115,11 +102,22 @@ export async function convertStrokeWithVariable(node: SceneNode, stroke: Stroke)
       const modeId = Object.keys(variable.valuesByMode)[0]
       const colorValue = variable.valuesByMode[modeId]
       if (colorValue && typeof colorValue === 'object' && 'r' in colorValue) {
-        return {
+        const paint: SolidPaint = {
           type: 'SOLID',
           color: toRGB(colorValue as { r: number; g: number; b: number }),
           opacity: getStrokeOpacity(stroke),
         }
+
+        // Try to bind to variable for live updates
+        try {
+          if (figma.variables && 'setBoundVariableForPaint' in figma.variables) {
+            return figma.variables.setBoundVariableForPaint(paint, 'color', variable)
+          }
+        } catch (e) {
+          // Binding failed, continue with static paint
+        }
+
+        return paint
       }
     } else {
       console.log(`Color variable "${stroke.colorVariable}" not found`)
