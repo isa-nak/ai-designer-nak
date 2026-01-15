@@ -26,9 +26,9 @@ export const API_CONFIG = {
 // =============================================================================
 
 export const DESIGN_SYSTEM_LIMITS = {
-  MAX_COLOR_VARIABLES: 25,
-  MAX_SPACING_VARIABLES: 15,
-  MAX_TEXT_STYLES: 15,
+  MAX_COLOR_VARIABLES: 50,  // Increased for token-based design systems
+  MAX_SPACING_VARIABLES: 30, // Increased for spacing scales
+  MAX_TEXT_STYLES: 25,
   MAX_COMPONENTS: 50,
 } as const
 

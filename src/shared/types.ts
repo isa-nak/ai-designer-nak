@@ -106,6 +106,8 @@ export interface VariableInfo {
   name: string
   collection: string
   value: string | number
+  isToken: boolean // True if this is a semantic token (alias), false if primitive
+  description?: string // Optional description for better AI context
 }
 
 export interface TextStyleInfo {
@@ -135,6 +137,9 @@ export interface FrameNode {
   counterAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX'
   padding?: { top: number; right: number; bottom: number; left: number }
   itemSpacing?: number
+  // Spacing variable references (use instead of raw numbers)
+  paddingVariable?: string
+  itemSpacingVariable?: string
   fills?: Fill[]
   strokes?: Stroke[]
   cornerRadius?: number

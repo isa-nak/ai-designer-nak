@@ -84,73 +84,90 @@ The JSON must follow this schema for a frame/screen:
 
     prompt += `
 
-## DESIGN SYSTEM - USE VARIABLE/STYLE REFERENCES
-This file has a design system. You MUST reference styles and variables BY NAME so they can be applied in Figma.`
+## DESIGN SYSTEM TOKENS - MANDATORY USAGE
+This file has semantic design tokens. You MUST use these tokens by name - NEVER use raw values.`
 
     if (hasColors) {
+      // ONLY show token names - DO NOT show hex values so AI can't use raw colors
+      const colorList = designSystem.colorVariables
+        .slice(0, DESIGN_SYSTEM_LIMITS.MAX_COLOR_VARIABLES)
+        .map(c => `- "${c.name}"`)
+        .join('\n')
+
       prompt += `
 
-### Color Variables - USE "colorVariable" instead of raw colors
-Available color variables (use the exact name string):
-${designSystem.colorVariables.slice(0, DESIGN_SYSTEM_LIMITS.MAX_COLOR_VARIABLES).map(c => `- "${c.name}"`).join('\n')}
+### COLOR TOKENS - USE "colorVariable" ONLY (MANDATORY)
+You MUST use these exact token names for ALL colors. Raw RGB/hex values are NOT allowed.
 
-When setting fills or strokes, use colorVariable with the variable name:
-\`\`\`
-"fills": [{ "type": "SOLID", "colorVariable": "Primary/500" }]
+Available color tokens:
+${colorList}
+
+ONLY valid format - use colorVariable with exact token name:
+"fills": [{ "type": "SOLID", "colorVariable": "Background/Primary" }]
 "strokes": [{ "type": "SOLID", "colorVariable": "Border/Default" }]
-\`\`\`
-DO NOT use raw "color": { "r": ..., "g": ..., "b": ... } - use "colorVariable" instead.`
+
+INVALID - these formats will cause errors:
+"fills": [{ "type": "SOLID", "color": { "r": 1, "g": 1, "b": 1 } }]
+"fills": [{ "type": "SOLID", "color": "#FFFFFF" }]
+
+Pick the most semantically appropriate token for each use case.`
     }
 
     if (hasSpacing) {
+      // Show spacing tokens with values (needed for AI to pick appropriate sizes)
+      const spacingList = designSystem.spacingVariables
+        .slice(0, DESIGN_SYSTEM_LIMITS.MAX_SPACING_VARIABLES)
+        .map(s => `- "${s.name}" = ${s.value}px`)
+        .join('\n')
+
       prompt += `
 
-### Spacing Variables - USE "paddingVariable" and "itemSpacingVariable"
-Available spacing variables:
-${designSystem.spacingVariables.slice(0, DESIGN_SYSTEM_LIMITS.MAX_SPACING_VARIABLES).map(s => `- "${s.name}": ${s.value}px`).join('\n')}
+### SPACING TOKENS - USE "paddingVariable" and "itemSpacingVariable" (MANDATORY)
+You MUST use these exact token names for ALL spacing. Raw numbers are NOT allowed.
 
-When setting padding or spacing, you can reference by name:
-\`\`\`
-"paddingVariable": "Spacing/16"
-"itemSpacingVariable": "Spacing/8"
-\`\`\`
-Or use the exact pixel values: padding: { "top": 16, "right": 16, "bottom": 16, "left": 16 }`
+Available spacing tokens:
+${spacingList}
+
+ONLY valid format - use variable names:
+"paddingVariable": "Spacing/md"
+"itemSpacingVariable": "Spacing/sm"
+
+INVALID - these formats will cause errors:
+"padding": { "top": 16, "right": 16, "bottom": 16, "left": 16 }
+"itemSpacing": 8
+
+Pick the token with the closest value for your needs.`
     }
 
     if (hasTextStyles) {
       prompt += `
 
-### Text Styles - USE "textStyleName" instead of raw font properties
-Available text styles (use the exact name string):
+### TEXT STYLES - USE "textStyleName" (REQUIRED)
+Available text styles (use exact name string):
 ${designSystem.textStyles.slice(0, DESIGN_SYSTEM_LIMITS.MAX_TEXT_STYLES).map(s => `- "${s.name}" (${s.fontFamily} ${s.fontWeight} ${s.fontSize}px)`).join('\n')}
 
-For TEXT elements, use textStyleName to apply the style:
-\`\`\`
-{
-  "type": "TEXT",
-  "name": "Heading",
-  "characters": "Welcome",
-  "textStyleName": "Heading/H1"
-}
-\`\`\`
-The textStyleName will automatically apply fontFamily, fontSize, fontWeight, lineHeight.
-DO NOT set fontSize, fontFamily, fontWeight manually - use textStyleName instead.`
+CORRECT:
+{ "type": "TEXT", "characters": "Hello", "textStyleName": "Body/Regular" }
+
+WRONG - Never set font properties manually:
+{ "type": "TEXT", "characters": "Hello", "fontSize": 16, "fontFamily": "Inter" }`
     }
 
     if (hasComponents) {
       prompt += `
 
 ### Available Components (use type: "INSTANCE" with componentKey):
-${designSystem.components.slice(0, DESIGN_SYSTEM_LIMITS.MAX_TEXT_STYLES).map(c => `- ${c.name}: "${c.key}"${c.description ? ` - ${c.description}` : ''}`).join('\n')}`
+${designSystem.components.slice(0, DESIGN_SYSTEM_LIMITS.MAX_COMPONENTS).map(c => `- ${c.name}: "${c.key}"${c.description ? ` - ${c.description}` : ''}`).join('\n')}`
     }
 
     prompt += `
 
-## DESIGN SYSTEM RULES - MANDATORY
-1. For colors: ALWAYS use "colorVariable": "VariableName" - NOT raw RGB values
-2. For text: ALWAYS use "textStyleName": "StyleName" - NOT fontSize/fontFamily/fontWeight
-3. For spacing: Use paddingVariable/itemSpacingVariable OR exact values from the spacing list
-4. Pick the most semantically appropriate variable (e.g., "Primary" for buttons, "Background" for containers)`
+## STRICT TOKEN RULES - FOLLOW EXACTLY
+1. COLORS: Use "colorVariable" with token name - NEVER raw RGB values
+2. TEXT: Use "textStyleName" - NEVER fontSize/fontFamily/fontWeight
+3. SPACING: Use "paddingVariable"/"itemSpacingVariable" - NEVER raw numbers
+4. Choose semantically appropriate tokens (e.g., "Background/Primary" for main bg, "Text/Primary" for main text)
+5. If a token name seems appropriate for the context, USE IT`
 
   } else {
     // No design system - use custom colors or defaults
@@ -193,8 +210,8 @@ ${contextInstructions}`
 
   prompt += `
 
-## Input Fields Example
-For text input fields, use a FRAME with auto-layout:
+## Input Fields Example (using tokens)
+For text input fields, use a FRAME with design tokens:
 {
   "type": "FRAME",
   "name": "Input Field",
@@ -202,14 +219,15 @@ For text input fields, use a FRAME with auto-layout:
   "primaryAxisSizingMode": "HUG",
   "counterAxisSizingMode": "HUG",
   "counterAxisAlignItems": "CENTER",
-  "padding": { "top": 12, "right": 16, "bottom": 12, "left": 16 },
+  "paddingVariable": "Spacing/md",
+  "itemSpacingVariable": "Spacing/sm",
   "cornerRadius": 8,
-  "fills": [{ "type": "SOLID", "colorVariable": "Background/Card" }],
+  "fills": [{ "type": "SOLID", "colorVariable": "Background/Secondary" }],
   "strokes": [{ "type": "SOLID", "colorVariable": "Border/Default" }],
   "strokeWeight": 1,
   "layoutAlign": "STRETCH",
   "children": [
-    { "type": "TEXT", "name": "Placeholder", "characters": "Enter text...", "textStyleName": "Body/Regular", "layoutGrow": 1 }
+    { "type": "TEXT", "name": "Placeholder", "characters": "Enter text...", "textStyleName": "Body/Regular", "fills": [{ "type": "SOLID", "colorVariable": "Text/Secondary" }], "layoutGrow": 1 }
   ]
 }
 
@@ -220,7 +238,8 @@ For text input fields, use a FRAME with auto-layout:
 4. Use realistic content (not "Lorem ipsum")
 5. Ensure good touch targets (minimum 44px for buttons)
 6. counterAxisAlignItems can ONLY be: "MIN", "CENTER", "MAX"
-7. Max 3-4 levels of nesting to avoid truncation`
+7. Max 3-4 levels of nesting to avoid truncation
+8. ALWAYS use design tokens - colorVariable, paddingVariable, itemSpacingVariable, textStyleName`
 
   return prompt
 }

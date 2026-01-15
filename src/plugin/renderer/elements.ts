@@ -3,9 +3,39 @@
  */
 
 import type { FrameNode as DesignFrame, ElementNode, DesignSystemContext } from '../../shared/types'
-import { findTextStyle } from './styleCache'
+import { findTextStyle, findSpacingVariable } from './styleCache'
 import { convertFillWithVariable, convertStrokeWithVariable, convertEffect } from './paints'
 import { loadFont, getFontStyle } from './fontLoader'
+
+/**
+ * Get resolved spacing value from a variable name
+ */
+function resolveSpacingVariable(variableName: string): number | null {
+  const variable = findSpacingVariable(variableName)
+  if (!variable) {
+    console.log(`Spacing variable "${variableName}" not found`)
+    return null
+  }
+
+  const modeId = Object.keys(variable.valuesByMode)[0]
+  let value = variable.valuesByMode[modeId]
+
+  // Follow alias chain if needed
+  let depth = 0
+  while (typeof value === 'object' && value !== null && 'type' in value && (value as VariableAlias).type === 'VARIABLE_ALIAS' && depth < 10) {
+    const aliasId = (value as VariableAlias).id
+    const aliasedVar = figma.variables.getVariableById(aliasId)
+    if (!aliasedVar) break
+    const aliasModeId = Object.keys(aliasedVar.valuesByMode)[0]
+    value = aliasedVar.valuesByMode[aliasModeId]
+    depth++
+  }
+
+  if (typeof value === 'number') {
+    return value
+  }
+  return null
+}
 
 // Render a single element
 export async function renderElement(
@@ -90,12 +120,26 @@ export async function applyFrameProperties(
         : 'CENTER' // Default to CENTER if invalid (e.g., STRETCH)
       frame.counterAxisAlignItems = counterValue as 'MIN' | 'MAX' | 'CENTER' | 'BASELINE'
     }
-    if (props.itemSpacing !== undefined) {
+    // Item spacing - prefer variable, fall back to raw value
+    if ('itemSpacingVariable' in props && props.itemSpacingVariable) {
+      const spacingValue = resolveSpacingVariable(props.itemSpacingVariable)
+      if (spacingValue !== null) {
+        frame.itemSpacing = spacingValue
+      }
+    } else if (props.itemSpacing !== undefined) {
       frame.itemSpacing = props.itemSpacing
     }
 
-    // Padding
-    if (props.padding) {
+    // Padding - prefer variable (uniform), fall back to raw values
+    if ('paddingVariable' in props && props.paddingVariable) {
+      const paddingValue = resolveSpacingVariable(props.paddingVariable)
+      if (paddingValue !== null) {
+        frame.paddingTop = paddingValue
+        frame.paddingRight = paddingValue
+        frame.paddingBottom = paddingValue
+        frame.paddingLeft = paddingValue
+      }
+    } else if (props.padding) {
       frame.paddingTop = props.padding.top
       frame.paddingRight = props.padding.right
       frame.paddingBottom = props.padding.bottom
